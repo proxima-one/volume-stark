@@ -2,9 +2,9 @@
 name = "maru_volume_stark"
 description = "STARK to prove LP 3Pool Curve transactions volume"
 version = "0.2.0"
-authors = ["Daniel Lubarov <daniel@lubarov.com>", "William Borgeaud <williamborgeaud@gmail.com>"]
+authors = ["Denis Kanonik <denis@proxima.one>", "Stanislav Karashchuk <stanislav@proxima.one>"]
 readme = "README.md"
-repository = "https://github.com/proxima-one/volume-stark-public"
+repository = "https://github.com/proxima-one/volume-stark"
 keywords = ["STARK", "Ethereum", "Curve"]
 categories = ["cryptography"]
 edition = "2021"
