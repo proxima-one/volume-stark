@@ -74,8 +74,11 @@ pub fn generate_proof(
     ).expect("Proving error");
     timing.print();
 
-    let final_proof_path = format!("basic_{}", proof_file);
-    fs::write(final_proof_path, &root_proof.to_bytes()).expect("Proof writing error");
+    let final_proof_path = format!("{}", proof_file);
+    let is_aggregated = 0u8;
+    let mut proof_bytes = root_proof.to_bytes();
+    proof_bytes.push(is_aggregated);
+    fs::write(final_proof_path, &proof_bytes).expect("Proof writing error");
     // let conf = generate_verifier_config(&root_proof).expect("Generate verifier config error");
     // let proof_base64_json = generate_proof_base64(&root_proof, &conf).expect("Generate proof Base64 error");
     // let pretty_proof_path = format!("{}.json", final_proof_path);

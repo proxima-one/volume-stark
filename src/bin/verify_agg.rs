@@ -30,7 +30,7 @@ pub fn verify_proof(
     circuit_file: &str,
     proof_file: &str,
 ) -> Result<()> {
-    let binary_data = fs::read(circuit_file).expect("File not found");
+    let mut binary_data = fs::read(circuit_file).expect("File not found");
 
     let gate_serializer = DefaultGateSerializer;
     let generator_serializer = DefaultGeneratorSerializer {
@@ -44,8 +44,9 @@ pub fn verify_proof(
     )
         .expect("Error loading recursive circuit");
 
-    let proof_data = fs::read(proof_file).expect("File not found");
-
+    let mut proof_data = fs::read(proof_file).expect("File not found");
+    binary_data.pop();
+    proof_data.pop();
     let common_data = CommonCircuitData {
         fri_params: FriParams {
             degree_bits: recursive_circuit.root.circuit.common.degree_bits(),

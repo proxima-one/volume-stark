@@ -38,14 +38,6 @@ pub struct ConfigJson {
     pub degree_bits: String,
 }
 
-fn starts_with_agg(s: &str) -> bool {
-    let first_word = s.split_whitespace().next();
-    if let Some(word) = first_word {
-        return word.starts_with("agg");
-    }
-    false
-}
-
 
 pub fn generate_agg_proof(
     recursive_circuit: &AllRecursiveCircuits<GoldilocksField, C, 2>,
@@ -53,10 +45,13 @@ pub fn generate_agg_proof(
     second_proof_path: &str,
     resulting_proof_path: &str
 ) -> Result<()> {
-    let first_proof_data = fs::read(first_proof_path).expect("File not found");
-    let second_proof_data = fs::read(second_proof_path).expect("File not found");
-    let lhs_is_agg = starts_with_agg(first_proof_path);
-    let rhs_is_agg = starts_with_agg(second_proof_path);
+    let mut first_proof_data = fs::read(first_proof_path).expect("File not found");
+    let mut second_proof_data = fs::read(second_proof_path).expect("File not found");
+
+    let lhs_is_agg = first_proof_data.last().unwrap().clone() != 0;
+    let rhs_is_agg = second_proof_data.last().unwrap().clone() != 0;
+    first_proof_data.pop();
+    second_proof_data.pop();
     let common_data = CommonCircuitData {
         fri_params: FriParams {
             degree_bits: recursive_circuit.root.circuit.common.degree_bits(),
@@ -99,10 +94,11 @@ pub fn generate_agg_proof(
 
     ).unwrap();
     timing.print();
-
-    let actual_proof = agg_proof.0.to_bytes();
+    let mut actual_proof = agg_proof.0.to_bytes();
     info!("Public values: {:?}", agg_proof.1);
-    fs::write(resulting_proof_path, actual_proof)?;
+    actual_proof.push(1u8);
+    fs::write(resulting_proof_path, actual_proof.clone())?;
+    actual_proof.pop();
     let conf = generate_verifier_config(&agg_proof.0)?;
     let proof_base64_json = generate_proof_base64(&agg_proof.0, &conf)?;
     let pretty_proof_path = format!("{}.json", resulting_proof_path);
@@ -149,7 +145,7 @@ fn main() -> Result<()> {
         &generator_serializer,
     ).unwrap();
     info!("Circuit loaded");
-    let temp_proof_file = "agg_tmp.proof";
+    let temp_proof_file = "tmp.proof";
     if let Ok(mut lines) = read_lines(proof_list) {
         let first_proof_file = lines.next().unwrap()?;
         let second_proof_file = lines.next().unwrap()?;
@@ -161,10 +157,10 @@ fn main() -> Result<()> {
         panic!("Could not read {:?}", proof_list);
     }
     let temp_proof_path = format!("{}.json", temp_proof_file);
-    let correct_path_name = format!("agg_{}.json", proof_file);
+    let correct_path_name = format!("{}.json", proof_file);
     let old_pis_name = format!("{}.public.json", temp_proof_file);
-    let correct_pis_name = format!("agg_{}.public.json", proof_file);
-    let final_proof = format!("agg_{}.bin", proof_file);
+    let correct_pis_name = format!("{}.public.json", proof_file);
+    let final_proof = format!("{}.bin", proof_file);
     std::fs::rename(temp_proof_file, final_proof)?;
     std::fs::rename(temp_proof_path, correct_path_name)?;
     std::fs::rename(old_pis_name, correct_pis_name)?;

@@ -30,8 +30,8 @@ pub fn verify_proof(
     circuit_file: &str,
     proof_file: &str,
 ) -> Result<()> {
-    let binary_data = fs::read(circuit_file).expect("File not found");
-
+    let mut binary_data = fs::read(circuit_file).expect("File not found");
+    binary_data.pop();
     let gate_serializer = DefaultGateSerializer;
     let generator_serializer = DefaultGeneratorSerializer {
         _phantom: PhantomData::<C>,
