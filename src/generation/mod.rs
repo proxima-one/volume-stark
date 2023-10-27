@@ -313,8 +313,8 @@ mod tests {
     #[test]
     fn test_regular_proof() -> Result<()> {
         init_logger();
-        let all_paths: Vec<PatriciaMerklePath> = read_paths_from_file("test_data/paths/paths_12901400-12901596.json")?;
-        let block_headers: Vec<Header> = read_headers_from_file("test_data/headers/block_headers_12901400-12901596.json")?;
+        let all_paths: Vec<PatriciaMerklePath> = read_paths_from_file("test_data/paths/merkle_paths.json")?;
+        let block_headers: Vec<Header> = read_headers_from_file("test_data/headers/block_headers_18304000-18305000.json")?;
         let tries = convert_to_tree(&all_paths)?;
         let patricia_inputs: PatriciaInputs = PatriciaInputs {
             pmt: tries,

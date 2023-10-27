@@ -1,0 +1,6 @@
+.DS_Store
+target/
+.vscode
+.idea/
+./proof_data
+Cargo.lock

@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::path::Path;
-use std::io::BufRead;
+use std::io::{BufRead, BufWriter};
 use std::sync::Arc;
 use std::{env, fs, io};
 use std::io::Write;
@@ -21,11 +21,11 @@ use plonky2::util::timing::TimingTree;
 use maru_volume_stark::proof::PublicValues;
 use serde::{Deserialize, Serialize};
 use maru_volume_stark::all_stark::AllStark;
+use maru_volume_stark::circom_verifier::{generate_proof_base64, generate_verifier_config};
 use maru_volume_stark::config::StarkConfig;
 use maru_volume_stark::fixed_recursive_verifier::AllRecursiveCircuits;
 use maru_volume_stark::generation::{ PatriciaInputs};
 use maru_volume_stark::patricia_merkle_trie::read_paths_from_file;
-
 type F = GoldilocksField;
 
 const D: usize = 2;
@@ -60,6 +60,8 @@ pub fn generate_agg_proof(
         ..recursive_circuit.root.circuit.common.clone()
     };
 
+
+    let mut timing = TimingTree::new("Proof aggregation", log::Level::Error);
     let first_proof: ProofWithPublicInputs<GoldilocksField, C, 2> = ProofWithPublicInputs::from_bytes(first_proof_data, &common_data)
         .expect("Error loading proof data");
     let second_proof: ProofWithPublicInputs<GoldilocksField, C, 2> = ProofWithPublicInputs::from_bytes(second_proof_data, &common_data)
@@ -68,14 +70,14 @@ pub fn generate_agg_proof(
     // recursive_circuit.verify_root(first_proof.clone())?;
     // recursive_circuit.verify_root(second_proof.clone())?;
 
-    let pi_1 = first_proof.public_inputs.iter().take(32).map(|x| x.0.to_le_bytes()[0..4].to_vec()).concat();
+    let pi_1 = first_proof.public_inputs.iter().take(24).map(|x| x.0.to_le_bytes()[0..4].to_vec()).concat();
     let starting_sum = U256::from_little_endian(&pi_1[0..32]);
-    let mut starting_blockhash = H256::from_slice(&pi_1[64..96]);
+    let mut starting_blockhash = H256::from_slice(&pi_1[32..64]);
     starting_blockhash.0.reverse();
 
-    let pi_2 = second_proof.public_inputs.iter().take(32).map(|x| x.0.to_le_bytes()[0..4].to_vec()).concat();
+    let pi_2 = second_proof.public_inputs.iter().take(24).map(|x| x.0.to_le_bytes()[0..4].to_vec()).concat();
     let ending_sum = U256::from_little_endian(&pi_2[0..32]);
-    let mut ending_blockhash = H256::from_slice(&pi_2[96..128]);
+    let mut ending_blockhash = H256::from_slice(&pi_2[64..96]);
     let total_sum = starting_sum + ending_sum;
     ending_blockhash.0.reverse();
     let pv = PublicValues {
@@ -91,10 +93,20 @@ pub fn generate_agg_proof(
         pv
 
     ).unwrap();
+    timing.print();
 
     let actual_proof = agg_proof.0.to_bytes();
     info!("Public values: {:?}", agg_proof.1);
     fs::write(resulting_proof_path, actual_proof)?;
+    let conf = generate_verifier_config(&agg_proof.0)?;
+    let proof_base64_json = generate_proof_base64(&agg_proof.0, &conf)?;
+    let pretty_proof_path = format!("{}.json", resulting_proof_path);
+    fs::write(pretty_proof_path, proof_base64_json.as_bytes())?;
+
+    let hex_input_file_name = format!("{}.public.json", resulting_proof_path);
+    let hex_input_file = File::create(hex_input_file_name)?;
+    let mut writer = BufWriter::new(hex_input_file);
+    serde_json::to_writer(&mut writer, &agg_proof.1)?;
 
     Ok(())
 }
@@ -143,7 +155,13 @@ fn main() -> Result<()> {
     } else {
         panic!("Could not read {:?}", proof_list);
     }
+    let temp_proof_path = format!("{}.json", temp_proof_file);
+    let correct_path_name = format!("{}.json", proof_file);
+    let old_pis_name = format!("{}.public.json", temp_proof_file);
+    let correct_pis_name = format!("{}.public.json", proof_file);
     std::fs::rename(temp_proof_file, proof_file)?;
+    std::fs::rename(temp_proof_path, correct_path_name)?;
+    std::fs::rename(old_pis_name, correct_pis_name)?;
     info!("OK");
     Ok(())
 }

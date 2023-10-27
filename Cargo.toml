@@ -83,3 +83,6 @@ name = "verify_agg"
 [[bin]]
 name = "final_proof_wrapper"
 
+[[bin]]
+name = "prove_recursive"
+

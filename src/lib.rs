@@ -38,6 +38,7 @@ pub mod patricia_merkle_trie;
 pub mod block_header;
 
 pub mod data;
+pub mod circom_verifier;
 
 use eth_trie_utils::partial_trie::HashedPartialTrie;
 // Set up Jemalloc
