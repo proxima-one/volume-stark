@@ -4,3 +4,4 @@ target/
 .idea/
 ./proof_data
 Cargo.lock
+circuits/

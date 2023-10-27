@@ -74,17 +74,17 @@ pub fn generate_proof(
     ).expect("Proving error");
     timing.print();
 
-
-    fs::write(proof_file, &root_proof.to_bytes()).expect("Proof writing error");
-    let conf = generate_verifier_config(&root_proof).expect("Generate verifier config error");
-    let proof_base64_json = generate_proof_base64(&root_proof, &conf).expect("Generate proof Base64 error");
-    let pretty_proof_path = format!("{}.json", proof_file);
-    fs::write(pretty_proof_path, proof_base64_json.as_bytes())?;
-
-    let hex_input_file_name = format!("{}.public.json", proof_file);
-    let hex_input_file = File::create(hex_input_file_name)?;
-    let mut writer = BufWriter::new(hex_input_file);
-    serde_json::to_writer(&mut writer, &pis)?;
+    let final_proof_path = format!("basic_{}", proof_file);
+    fs::write(final_proof_path, &root_proof.to_bytes()).expect("Proof writing error");
+    // let conf = generate_verifier_config(&root_proof).expect("Generate verifier config error");
+    // let proof_base64_json = generate_proof_base64(&root_proof, &conf).expect("Generate proof Base64 error");
+    // let pretty_proof_path = format!("{}.json", final_proof_path);
+    // fs::write(pretty_proof_path, proof_base64_json.as_bytes())?;
+    //
+    // let hex_input_file_name = format!("{}.public.json", final_proof_path);
+    // let hex_input_file = File::create(hex_input_file_name)?;
+    // let mut writer = BufWriter::new(hex_input_file);
+    // serde_json::to_writer(&mut writer, &pis)?;
 
     Ok(())
 }
