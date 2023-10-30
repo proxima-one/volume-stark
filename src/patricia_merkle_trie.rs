@@ -4,6 +4,8 @@ use std::{
 };
 use std::collections::{HashMap, HashSet};
 use anyhow::Result;
+use bytes::Buf;
+use bytes::buf::Reader;
 use keccak_hash::{H256, keccak};
 use log::{error, info};
 use plonky2::{
@@ -16,6 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use plonky2::plonk::config::Hasher;
 use rand::{self, Rng};
+use serde_json::Value;
 
 pub fn str_to_u8_array(str: &str) -> Result<Vec<u8>> {
     let str: Vec<char> = str.chars().collect();
@@ -249,6 +252,39 @@ pub fn read_paths_from_file(file_name: &str) -> Result<Vec<PatriciaMerklePath>, 
                 sold_token_volume_index: i.event_parts.sold_token_volume_index,
                 sold_token_id: str_to_u8_array(&i.event_parts.sold_token_id)?,
                 sold_token_id_index: i.event_parts.sold_token_id_index,
+            },
+        });
+        merkle_path.clear();
+    }
+    Ok(paths)
+}
+
+pub fn read_paths_from_json_request(objects_arr: &Vec<Value>) -> Result<Vec<PatriciaMerklePath>, anyhow::Error> {
+    let mut merkle_path: Vec<PatriciaMerklePathElement> = vec![];
+    let mut paths: Vec<PatriciaMerklePath> = vec![];
+    for object in objects_arr{
+        let paths_str: PatriciaMerklePathStr = serde_json::from_value(object.clone()).unwrap();
+        for j in paths_str.merkle_path.iter() {
+            merkle_path.push(PatriciaMerklePathElement {
+                prefix: str_to_u8_array(&j.prefix)?,
+                postfix: str_to_u8_array(&j.postfix)?,
+                prefix_length: j.prefix_length,
+                postfix_length: j.postfix_length,
+            });
+        }
+        paths.push(PatriciaMerklePath {
+            merkle_path: merkle_path.clone(),
+            rlp_recipt: str_to_u8_array(&paths_str.rlp_recipt)?,
+            hash_root: str_to_u8_array(&paths_str.hash_root)?,
+            event_parts: EventParts {
+                pool_address: str_to_u8_array(&paths_str.event_parts.pool_address)?,
+                event_selector: str_to_u8_array(&paths_str.event_parts.event_selector)?,
+                sold_token_volume: str_to_u8_array(&paths_str.event_parts.sold_token_volume)?,
+                pool_address_index: paths_str.event_parts.pool_address_index,
+                event_selector_index: paths_str.event_parts.event_selector_index,
+                sold_token_volume_index: paths_str.event_parts.sold_token_volume_index,
+                sold_token_id: str_to_u8_array(&paths_str.event_parts.sold_token_id)?,
+                sold_token_id_index: paths_str.event_parts.sold_token_id_index,
             },
         });
         merkle_path.clear();

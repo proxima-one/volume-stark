@@ -7,7 +7,10 @@ use std::fmt;
 use std::fs::File;
 use std::io::BufReader;
 use anyhow::Result;
+use http_body_util::BodyExt;
+use itertools::Itertools;
 use log::{error, info};
+use serde_json::Value;
 
 type Bytes = Vec<u8>;
 
@@ -147,7 +150,7 @@ fn deserialize_number<'de, D>(deserializer: D) -> Result<U256, D::Error>
     Ok(U256::from(number))
 }
 
-pub fn read_headers_from_file(file_name: &str) -> Result<Vec<Header>, anyhow::Error>  {
+pub fn read_headers_from_file(file_name: &str) -> Result<Vec<Header>, anyhow::Error> {
     let file = File::open(file_name)?;
     let reader = BufReader::new(file);
     let headers: Vec<Header> = match serde_json::from_reader(reader) {
@@ -157,6 +160,11 @@ pub fn read_headers_from_file(file_name: &str) -> Result<Vec<Header>, anyhow::Er
             std::process::exit(1);
         }
     };
+    Ok(headers)
+}
+
+pub fn read_headers_from_request(objects_arr: &Vec<Value>) -> Result<Vec<Header>, anyhow::Error> {
+    let headers: Vec<Header> = objects_arr.iter().map(|json_value| serde_json::from_value(json_value.clone()).unwrap()).collect_vec();
     Ok(headers)
 }
 
