@@ -96,4 +96,7 @@ name = "prove_recursive"
 [[bin]]
 name = "run_proof_server"
 
+[[bin]]
+name = "test_run_proof_server"
+
 

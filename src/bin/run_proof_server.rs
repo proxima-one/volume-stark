@@ -7,7 +7,7 @@ use bytes::Buf;
 use env_logger::{DEFAULT_FILTER_ENV, Env, try_init_from_env};
 use ethereum_types::{H256, U256};
 use itertools::Itertools;
-use log::error;
+use log::{error};
 use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::fri::FriParams;
 use plonky2::plonk::circuit_data::CommonCircuitData;
@@ -20,6 +20,14 @@ use anyhow::Result;
 use maru_volume_stark::circom_verifier::{generate_proof_base64, generate_verifier_config};
 use maru_volume_stark::fixed_recursive_verifier::AllRecursiveCircuits;
 use maru_volume_stark::proof::PublicValues;
+
+type F = GoldilocksField;
+
+const D: usize = 2;
+
+type C = PoseidonGoldilocksConfig;
+
+
 use http_body_util::BodyExt;
 use std::net::SocketAddr;
 use tokio::io::{self, AsyncWriteExt};
@@ -34,11 +42,6 @@ use std::thread;
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpStream;
 
-type F = GoldilocksField;
-
-const D: usize = 2;
-
-type C = PoseidonGoldilocksConfig;
 
 struct Body {
     _marker: PhantomData<*const ()>,
@@ -105,7 +108,7 @@ use maru_volume_stark::config::StarkConfig;
 use maru_volume_stark::generation::PatriciaInputs;
 use maru_volume_stark::patricia_merkle_trie::{convert_to_tree, PatriciaMerklePath, read_paths_from_json_request};
 
-async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn error::Error>> {
+async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     let mut stdout = io::stdout();
 
     let addr: SocketAddr = ([127, 0, 0, 1], 3000).into();
@@ -204,8 +207,8 @@ async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn error::Error>> {
                         let recursive_circuit_ref = cnt_clone.lock().unwrap();
                         let whole_body = req.collect().await.expect("Error parsing body").aggregate();
                         let data: serde_json::Value = serde_json::from_reader(whole_body.reader()).expect("JSON not decoded");
-                        let merkle_paths_json_values = data["merkle_paths"].as_array().expect("Lhs proof parameter not included");
-                        let block_headers_json_values = data["block_headers"].as_array().expect("Rhs proof parameter not included");
+                        let merkle_paths_json_values = data["merkle_paths"].as_array().expect("Merkle paths parameter not included");
+                        let block_headers_json_values = data["block_headers"].as_array().expect("Block headers parameter not included");
                         let merkle_paths: Vec<PatriciaMerklePath> = read_paths_from_json_request(merkle_paths_json_values).expect("Error parsing merkle path's from JSON");
                         let block_headers: Vec<Header> = read_headers_from_request(block_headers_json_values).expect("Error parsing block headers from JSON");
                         let tries = convert_to_tree(&merkle_paths).expect("Error converting path's to tree");
@@ -277,21 +280,21 @@ impl hyper::rt::Write for IOTypeNotSend {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
-    ) -> Poll<Result<usize, io::Error>> {
+    ) -> Poll<Result<usize, std::io::Error>> {
         Pin::new(&mut self.stream).poll_write(cx, buf)
     }
 
     fn poll_flush(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Result<(), io::Error>> {
+    ) -> Poll<Result<(), std::io::Error>> {
         Pin::new(&mut self.stream).poll_flush(cx)
     }
 
     fn poll_shutdown(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-    ) -> Poll<Result<(), io::Error>> {
+    ) -> Poll<Result<(), std::io::Error>> {
         Pin::new(&mut self.stream).poll_shutdown(cx)
     }
 }
@@ -301,7 +304,7 @@ impl hyper::rt::Read for IOTypeNotSend {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: hyper::rt::ReadBufCursor<'_>,
-    ) -> Poll<io::Result<()>> {
+    ) -> Poll<std::io::Result<()>> {
         Pin::new(&mut self.stream).poll_read(cx, buf)
     }
 }
