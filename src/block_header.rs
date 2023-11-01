@@ -25,8 +25,7 @@ pub struct Header {
     pub logs_bloom: Bloom,
     pub difficulty: U256,
     pub hash: H256,
-    #[serde(deserialize_with = "deserialize_number")]
-    pub number: U256,
+    pub number: ethereum_types::U64,
     pub gas_limit: U256,
     pub gas_used: U256,
     pub timestamp: U256,
