@@ -1,23 +1,15 @@
 use std::env;
 use std::fs::File;
 use std::io::{BufRead, Read};
-use std::path::Path;
-use base64::Engine;
-use base64::engine::general_purpose;
 use bytes::Buf;
 use bytes::Bytes;
 use env_logger::{DEFAULT_FILTER_ENV, Env, try_init_from_env};
-use http_body_util::{BodyExt, Empty, Full};
+use http_body_util::{BodyExt, Full};
 use hyper::Request;
 use hyper_util::rt::TokioIo;
-use itertools::Itertools;
 use log::{error, info};
 use serde_json::{json, Value};
-use tokio::io::{self, AsyncWriteExt as _};
 use tokio::net::TcpStream;
-use maru_volume_stark::block_header;
-use maru_volume_stark::block_header::read_headers_from_file;
-use maru_volume_stark::patricia_merkle_trie::{EventPartsStr, PatriciaMerklePathElementStr, read_paths_from_file};
 
 
 // A simple type alias so as to DRY.
@@ -28,11 +20,11 @@ fn init_logger() {
 }
 
 fn convert_data_to_json(paths_file_name: &str, block_headers_file_name: &str) -> Result<Value> {
+    info!("{:?} {:?}", paths_file_name, block_headers_file_name);
     let mut file_path = File::open(paths_file_name)?;
     let mut block_header_file_path = File::open(block_headers_file_name)?;
     let mut path_contents = String::new();
     let mut block_headers_contents = String::new();
-
     file_path.read_to_string(&mut path_contents)?;
     block_header_file_path.read_to_string(&mut block_headers_contents)?;
 
@@ -70,8 +62,6 @@ async fn main() -> Result<()> {
         block_names.push(line);
     }
 
-    // let first_json = convert_data_to_json(first_paths, first_block_headers).expect("Error parsing data to JSON");
-    // let second_json = convert_data_to_json(second_paths, second_block_headers).expect("Error parsing data to JSON");
 
     let url = "http://127.0.0.1:3000/generate_proof".parse::<hyper::Uri>().unwrap();
     if url.scheme_str() != Some("http") {
@@ -95,7 +85,7 @@ async fn main() -> Result<()> {
         let proof_data_json = convert_data_to_json(paths_name.as_str(), block_name.as_str()).expect("Error parsing data to JSON");
         let binding = generate_proof(url.clone(), proof_data_json).await.expect("Error generating first proof");
         let first_proof = binding.as_str();
-        let agg_json = json!({"lhs_proof" : first_proof, "rhs_proof" : agg_proof });
+        let agg_json = json!({"lhs_proof" : agg_proof, "rhs_proof" : first_proof });
         let result = aggregate_proof(agg_url.clone(), agg_json).await.expect("Error generating agg first proof");
         agg_proof = result.as_str().to_string();
     }

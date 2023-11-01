@@ -2,7 +2,7 @@ use std::{env, fs};
 use std::io::Read;
 use base64::{Engine};
 use base64::engine::general_purpose;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError};
 use bytes::Buf;
 use env_logger::{DEFAULT_FILTER_ENV, Env, try_init_from_env};
 use ethereum_types::{H256, U256};
@@ -41,6 +41,13 @@ use std::task::{Context, Poll};
 use std::thread;
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpStream;
+use std::borrow::Borrow;
+use serde::Deserialize;
+use maru_volume_stark::all_stark::AllStark;
+use maru_volume_stark::block_header::{Header, read_headers_from_request};
+use maru_volume_stark::config::StarkConfig;
+use maru_volume_stark::generation::PatriciaInputs;
+use maru_volume_stark::patricia_merkle_trie::{convert_to_tree, PatriciaMerklePath, read_paths_from_json_request};
 
 
 struct Body {
@@ -100,13 +107,15 @@ fn main() {
     server_http2.join().unwrap();
 }
 
-use std::borrow::Borrow;
-use serde::Deserialize;
-use maru_volume_stark::all_stark::AllStark;
-use maru_volume_stark::block_header::{Header, read_headers_from_request};
-use maru_volume_stark::config::StarkConfig;
-use maru_volume_stark::generation::PatriciaInputs;
-use maru_volume_stark::patricia_merkle_trie::{convert_to_tree, PatriciaMerklePath, read_paths_from_json_request};
+fn construct_error_response(status: StatusCode, error_message: &str) -> Response<Body> {
+    let error_json = json!({
+        "error": error_message,
+    });
+    let json = serde_json::to_string(&error_json).expect("Error converting json to string");
+    let mut response = Response::new(Body::from(json));
+    *response.status_mut() = status;
+    response
+}
 
 async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     let mut stdout = io::stdout();
@@ -137,22 +146,66 @@ async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Erro
             let cnt_clone = Arc::clone(&cnt);
             async move {
                 match (req.method(), req.uri().path()) {
+                    
                     (&Method::POST, "/aggregate") => {
-                        let recursive_circuit_ref = cnt_clone.lock().unwrap();
-                        let whole_body = req.collect().await.expect("Error parsing body").aggregate();
-                        let data: serde_json::Value = serde_json::from_reader(whole_body.reader()).expect("JSON not decoded");
-                        let lhs_proof = data["lhs_proof"].as_str().expect("Lhs proof parameter not included");
-                        let rhs_proof = data["rhs_proof"].as_str().expect("Rhs proof parameter not included");
+                        let recursive_circuit_ref: MutexGuard<_> = match cnt_clone.lock() {
+                            Ok(lock) => lock,
+                            Err(err) => match err {
+                                PoisonError { .. } => {
+                                    let recovered_lock = err.into_inner();
+                                    recovered_lock
+                                }
+                            },
+                        };
+                        let whole_body_result = req.collect().await;
+                        if let Err(err) = whole_body_result {
+                            return Ok::<_, Error>(construct_error_response(StatusCode::INTERNAL_SERVER_ERROR, "REQUEST_BODY_ERROR"));
+                        }
+                        let whole_body = whole_body_result.unwrap().aggregate();
+                        let data_result = serde_json::from_reader(whole_body.reader());
+                        if let Err(err) = data_result {
+                            return Ok::<_, Error>(construct_error_response(StatusCode::INTERNAL_SERVER_ERROR, "JSON_NOT_PARSED"));
+                        }
+                        let data: serde_json::Value = data_result.unwrap();
+                        let lhs_proof = match data["lhs_proof"].as_str() {
+                            Some(lhs_proof) => {
+                                lhs_proof
+                            }
+                            None => {
+                                return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "LHS_PROOF_NOT_INCLUDED"));
+                            }
+                        };
+
+                        let rhs_proof = match data["rhs_proof"].as_str() {
+                            Some(rhs_proof) => {
+                                rhs_proof
+                            }
+                            None => {
+                                return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "RHS_PROOF_NOT_INCLUDED"));
+                            }
+                        };
+
                         let mut lhs_proof_bytes = Vec::<u8>::new();
                         let mut rhs_proof_bytes = Vec::<u8>::new();
-                        general_purpose::STANDARD
-                            .decode_vec(lhs_proof, &mut lhs_proof_bytes).unwrap();
-                        general_purpose::STANDARD
-                            .decode_vec(rhs_proof, &mut rhs_proof_bytes).unwrap();
+
+                        let decode_lhs_proof = general_purpose::STANDARD
+                            .decode_vec(lhs_proof, &mut lhs_proof_bytes);
+                        let decode_rhs_proof = general_purpose::STANDARD
+                            .decode_vec(rhs_proof, &mut rhs_proof_bytes);
+
+                        if let Err(err) = decode_lhs_proof {
+                            return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "LHS_PROOF_NOT_DECODED"));
+                        }
+
+                        if let Err(err) = decode_rhs_proof {
+                            return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "RHS_PROOF_NOT_DECODED"));
+                        }
+
                         let lhs_is_agg = lhs_proof_bytes.clone().last().unwrap().clone() != 0;
                         let rhs_is_agg = rhs_proof_bytes.clone().last().unwrap().clone() != 0;
                         lhs_proof_bytes.pop();
                         rhs_proof_bytes.pop();
+
                         let common_data = CommonCircuitData {
                             fri_params: FriParams {
                                 degree_bits: recursive_circuit_ref.root.circuit.common.degree_bits(),
@@ -162,10 +215,20 @@ async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Erro
                         };
 
                         let timing = TimingTree::new("Proof aggregation", log::Level::Error);
-                        let first_proof: ProofWithPublicInputs<GoldilocksField, C, 2> = ProofWithPublicInputs::from_bytes(lhs_proof_bytes.clone(), &common_data)
-                            .expect("Error loading proof data");
-                        let second_proof: ProofWithPublicInputs<GoldilocksField, C, 2> = ProofWithPublicInputs::from_bytes(rhs_proof_bytes.clone(), &common_data)
-                            .expect("Error loading proof data");
+                        let first_proof_result: Result<ProofWithPublicInputs<GoldilocksField, C, 2>> = ProofWithPublicInputs::from_bytes(lhs_proof_bytes.clone(), &common_data);
+                        let second_proof_result: Result<ProofWithPublicInputs<GoldilocksField, C, 2>> = ProofWithPublicInputs::from_bytes(rhs_proof_bytes.clone(), &common_data);
+
+                        if let Err(err) = first_proof_result {
+                            return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "LHS_PROOF_NOT_CORRECT"));
+                        }
+
+                        if let Err(err) = second_proof_result {
+                            return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "RHS_PROOF_NOT_CORRECT"));
+                        }
+
+                        let first_proof = first_proof_result.unwrap();
+                        let second_proof = second_proof_result.unwrap();
+
                         let pi_1 = first_proof.public_inputs.iter().take(24).map(|x| x.0.to_le_bytes()[0..4].to_vec()).concat();
                         let starting_sum = U256::from_little_endian(&pi_1[0..32]);
                         let mut starting_blockhash = H256::from_slice(&pi_1[32..64]);
@@ -180,14 +243,23 @@ async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Erro
                             starting_blockhash,
                             ending_blockhash,
                         };
-                        let agg_proof = recursive_circuit_ref.prove_aggregation(
-                            lhs_is_agg,
-                            &first_proof,
-                            rhs_is_agg,
-                            &second_proof,
-                            pv,
-                        ).unwrap();
+
+
+                        let agg_proof_result = recursive_circuit_ref.prove_aggregation(lhs_is_agg, &first_proof, rhs_is_agg, &second_proof, pv);
+
+                        let result: Result<(ProofWithPublicInputs<GoldilocksField, C, 2>, PublicValues), Response<Body>> = agg_proof_result.map_err(|err| {
+                            let error_message = format!("Error in prove_aggregation: {:?}", err);
+                            construct_error_response(StatusCode::BAD_REQUEST, &error_message)
+                        });
                         timing.print();
+                        let agg_proof = match result {
+                            Ok(result) => {
+                                result
+                            }
+                            Err(error_response) => {
+                                return Ok::<_, Error>(error_response);
+                            }
+                        };
                         let mut actual_proof = agg_proof.0.to_bytes();
                         actual_proof.push(1u8);
                         let conf = generate_verifier_config(&agg_proof.0).expect("Error to generate verifier config");
@@ -204,14 +276,62 @@ async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Erro
                         Ok::<_, Error>(response)
                     }
                     (&Method::POST, "/generate_proof") => {
-                        let recursive_circuit_ref = cnt_clone.lock().unwrap();
-                        let whole_body = req.collect().await.expect("Error parsing body").aggregate();
-                        let data: serde_json::Value = serde_json::from_reader(whole_body.reader()).expect("JSON not decoded");
-                        let merkle_paths_json_values = data["merkle_paths"].as_array().expect("Merkle paths parameter not included");
-                        let block_headers_json_values = data["block_headers"].as_array().expect("Block headers parameter not included");
-                        let merkle_paths: Vec<PatriciaMerklePath> = read_paths_from_json_request(merkle_paths_json_values).expect("Error parsing merkle path's from JSON");
-                        let block_headers: Vec<Header> = read_headers_from_request(block_headers_json_values).expect("Error parsing block headers from JSON");
-                        let tries = convert_to_tree(&merkle_paths).expect("Error converting path's to tree");
+                        let recursive_circuit_ref: MutexGuard<_> = match cnt_clone.lock() {
+                            Ok(lock) => lock,
+                            Err(err) => match err {
+                                PoisonError { .. } => {
+                                    let recovered_lock = err.into_inner();
+                                    recovered_lock
+                                }
+                            },
+                        };
+                        let whole_body_result = req.collect().await;
+                        if let Err(err) = whole_body_result {
+                            return Ok::<_, Error>(construct_error_response(StatusCode::INTERNAL_SERVER_ERROR, "REQUEST_BODY_ERROR"));
+                        }
+                        let whole_body = whole_body_result.unwrap().aggregate();
+                        let data_result = serde_json::from_reader(whole_body.reader());
+                        if let Err(err) = data_result {
+                            return Ok::<_, Error>(construct_error_response(StatusCode::INTERNAL_SERVER_ERROR, "JSON_NOT_PARSED"));
+                        }
+                        let data: serde_json::Value = data_result.unwrap();
+
+                        let merkle_paths_json_values = match  data["merkle_paths"].as_array() {
+                            Some(values) => {
+                                values
+                            }
+                            None => {
+                                return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "MERKLE_PATHS_NOT_INCLUDED"));
+                            }
+                        };
+
+                        let block_headers_json_values = match  data["block_headers"].as_array() {
+                            Some(values) => {
+                                values
+                            }
+                            None => {
+                                return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "BLOCK_HEADERS_NOT_INCLUDED"));
+                            }
+                        };
+
+                        let merkle_paths_result: Result<Vec<PatriciaMerklePath>> = read_paths_from_json_request(merkle_paths_json_values);
+                        if let Err(err) = merkle_paths_result {
+                            return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "MERKLE_PATHS_PARSING_ERROR"));
+                        }
+                        let merkle_paths = merkle_paths_result.unwrap();
+
+                        let block_headers_result: Result<Vec<Header>> = read_headers_from_request(block_headers_json_values);
+                        if let Err(err) = block_headers_result {
+                            return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "BLOCK_HEADERS_PARSING_ERROR"));
+                        }
+                        let block_headers = block_headers_result.unwrap();
+
+                        let tries_result = convert_to_tree(&merkle_paths);
+                        if let Err(err) = tries_result {
+                            return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "TRIES_PARSING_ERROR"));
+                        }
+                        let tries = tries_result.unwrap();
+
                         let patricia_inputs = PatriciaInputs {
                             pmt: tries,
                             starting_blockhash: block_headers[0].parent_hash.clone(),
@@ -220,14 +340,18 @@ async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Erro
                         let config = StarkConfig::standard_fast_config();
                         let all_stark = AllStark::<F, D>::default();
                         let mut timing = TimingTree::new("Generate recursive proof", log::Level::Error);
-                        let (root_proof, pis) = recursive_circuit_ref.prove_root(
+                        let prove_result = recursive_circuit_ref.prove_root(
                             &all_stark,
                             &config,
                             Default::default(),
                             patricia_inputs.clone(),
                             &mut timing,
-                        ).expect("Proving error");
+                        );
+                        if let Err(err) = prove_result {
+                            return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "PROOF_GENERATION_ERROR"));
+                        }
                         timing.print();
+                        let root_proof = prove_result.unwrap().0;
                         let is_aggregated = 0u8;
                         let mut proof_bytes = root_proof.to_bytes();
                         proof_bytes.push(is_aggregated);

@@ -183,7 +183,7 @@ mod tests {
     #[test]
     fn test_headers() -> Result<()> {
         init_logger();
-        let all_headers: Vec<Header> = read_headers_from_file("headers/output.json")?;
+        let all_headers: Vec<Header> = read_headers_from_file("test_data/headers/block_headers_17388000-17389000.json")?;
         info!("Headers: {:?}, hash: {:?}", all_headers[0].hash, all_headers[0].hash());
         Ok(())
     }

@@ -656,7 +656,7 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
         rhs_is_agg: bool,
         rhs_proof: &ProofWithPublicInputs<F, C, D>,
         public_values: PublicValues,
-    ) -> anyhow::Result<(ProofWithPublicInputs<F, C, D>, PublicValues)> {
+    ) -> anyhow::Result<(ProofWithPublicInputs<F, C, D>, PublicValues), String> {
         let mut agg_inputs = PartialWitness::new();
 
         agg_inputs.set_bool_target(self.aggregation.lhs.is_agg, lhs_is_agg);
@@ -672,9 +672,18 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
 
         set_public_value_targets(&mut agg_inputs, &self.aggregation.public_values, &public_values);
 
-        let aggregation_proof = self.aggregation.circuit.prove(agg_inputs)?;
-        Ok((aggregation_proof, public_values))
+        let aggregation_result = self.aggregation.circuit.prove(agg_inputs);
+
+        match aggregation_result {
+            Ok(aggregation_proof) => {
+                Ok((aggregation_proof, public_values))
+            }
+           _ => {
+                Err("Proof generation failed".to_string())
+            }
+        }
     }
+
 
     pub fn verify_aggregation(
         &self,

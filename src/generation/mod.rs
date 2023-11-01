@@ -313,8 +313,8 @@ mod tests {
     #[test]
     fn test_regular_proof() -> Result<()> {
         init_logger();
-        let all_paths: Vec<PatriciaMerklePath> = read_paths_from_file("test_data/paths/merkle_paths.json")?;
-        let block_headers: Vec<Header> = read_headers_from_file("test_data/headers/block_headers_18304000-18305000.json")?;
+        let all_paths: Vec<PatriciaMerklePath> = read_paths_from_file("test_data/paths/paths_1.json")?;
+        let block_headers: Vec<Header> = read_headers_from_file("test_data/headers/blockheaders_1.json")?;
         let tries = convert_to_tree(&all_paths)?;
         let patricia_inputs: PatriciaInputs = PatriciaInputs {
             pmt: tries,
@@ -342,10 +342,6 @@ mod tests {
         let all_paths_2: Vec<PatriciaMerklePath> = read_paths_from_file("test_data/paths/paths_2.json")?;
         let block_headers_1: Vec<Header> = read_headers_from_file("test_data/headers/blockheaders_1.json")?;
         let block_headers_2: Vec<Header> = read_headers_from_file("test_data/headers/blockheaders_2.json")?;
-        // let all_paths_1: Vec<PatriciaMerklePath> = read_paths_from_file("test_data/paths/paths_12901300-12901399.json")?;
-        // let all_paths_2: Vec<PatriciaMerklePath> = read_paths_from_file("test_data/paths/paths_12901400-12901596.json")?;
-        // let block_headers_1: Vec<Header> = read_headers_from_file("test_data/headers/block_headers_12901300-12901399.json")?;
-        // let block_headers_2: Vec<Header> = read_headers_from_file("test_data/headers/block_headers_12901400-12901596.json")?;
         let tries_1 = convert_to_tree(&all_paths_1)?;
         let tries_2 = convert_to_tree(&all_paths_2)?;
         let patricia_inputs_1: PatriciaInputs = PatriciaInputs {
@@ -363,9 +359,6 @@ mod tests {
         let all_stark = AllStark::<F, D>::default();
         let degree_bit_ranges_high = [17usize, 13, 8, 11, 10, 9, 13];
         let degree_bit_ranges_low = [16usize, 9, 5, 7, 5, 7, 10];
-        // let degree_bit_ranges_high = [17usize, 16, 11, 14, 11, 9, 16];
-        // let degree_bit_ranges_low =  [16usize, 12,  6, 10,  7,  7, 9];
-
         let degree_bit_ranges = degree_bit_ranges_low.iter().zip(degree_bit_ranges_high.iter()).map(|(x, y)| *x..*y).collect::<Vec<_>>().try_into().unwrap();
         println!("{:?}", degree_bit_ranges);
         let recursive_circuit: AllRecursiveCircuits<GoldilocksField, C, D> = AllRecursiveCircuits::new(
