@@ -13,3 +13,20 @@ For aggregation, you need to create txt file with proof path names, for example:
 firstproof.bin
 secondproof.bin
 ```
+
+### Recursive proof generation Xeon E5-2697 v4, 128 GB DDR4 2400MHz
+
+| Blocks number | To prove, s |
+|---------------|-------------|
+| 1             | 46.8        |
+| 2             | 44.8        |
+| 4             | 45.2        |
+| 8             | 45.8        |
+| 16            | 46.7        |
+| 32            | 53.5        |
+| 64            | 54.74       |
+| 128           | 71.268      |
+| 256           | 88.52       |
+| 512           | 152.72      |
+| 1000          | 267         |
+
