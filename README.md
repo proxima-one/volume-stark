@@ -13,3 +13,4 @@ For aggregation, you need to create txt file with proof path names, for example:
 firstproof.bin
 secondproof.bin
 ```
+

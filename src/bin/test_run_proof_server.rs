@@ -12,7 +12,6 @@ use serde_json::{json, Value};
 use tokio::net::TcpStream;
 
 
-// A simple type alias so as to DRY.
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 fn init_logger() {
@@ -81,7 +80,7 @@ async fn main() -> Result<()> {
     let binding = aggregate_proof(agg_url.clone(), agg_json).await.expect("Error generating agg first proof");
     let mut agg_proof = binding.as_str().to_string();
 
-    for (paths_name, block_name) in paths_names.iter().zip(block_names).skip(2) {
+    for (paths_name, block_name) in paths_names.iter().zip(block_names){
         let proof_data_json = convert_data_to_json(paths_name.as_str(), block_name.as_str()).expect("Error parsing data to JSON");
         let binding = generate_proof(url.clone(), proof_data_json).await.expect("Error generating first proof");
         let first_proof = binding.as_str();

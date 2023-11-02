@@ -2,7 +2,7 @@ use std::{env, fs};
 use std::io::Read;
 use base64::{Engine};
 use base64::engine::general_purpose;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use bytes::Buf;
 use env_logger::{DEFAULT_FILTER_ENV, Env, try_init_from_env};
 use ethereum_types::{H256, U256};
@@ -20,14 +20,6 @@ use anyhow::Result;
 use maru_volume_stark::circom_verifier::{generate_proof_base64, generate_verifier_config};
 use maru_volume_stark::fixed_recursive_verifier::AllRecursiveCircuits;
 use maru_volume_stark::proof::PublicValues;
-
-type F = GoldilocksField;
-
-const D: usize = 2;
-
-type C = PoseidonGoldilocksConfig;
-
-
 use http_body_util::BodyExt;
 use std::net::SocketAddr;
 use tokio::io::{self, AsyncWriteExt};
@@ -48,6 +40,12 @@ use maru_volume_stark::block_header::{Header, read_headers_from_request};
 use maru_volume_stark::config::StarkConfig;
 use maru_volume_stark::generation::PatriciaInputs;
 use maru_volume_stark::patricia_merkle_trie::{convert_to_tree, PatriciaMerklePath, read_paths_from_json_request};
+
+type F = GoldilocksField;
+
+const D: usize = 2;
+
+type C = PoseidonGoldilocksConfig;
 
 
 struct Body {
@@ -347,17 +345,22 @@ async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Erro
                             patricia_inputs.clone(),
                             &mut timing,
                         );
+                        timing.print();
                         if let Err(err) = prove_result {
                             return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "PROOF_GENERATION_ERROR"));
                         }
-                        timing.print();
-                        let root_proof = prove_result.unwrap().0;
+                        let (root_proof, proof_pis) = prove_result.unwrap();
                         let is_aggregated = 0u8;
                         let mut proof_bytes = root_proof.to_bytes();
                         proof_bytes.push(is_aggregated);
+                        let conf = generate_verifier_config(&root_proof).expect("Error to generate verifier config");
+                        let proof_base64_json = generate_proof_base64(&root_proof, &conf).expect("Error to generate base64 proof");
                         let b64_agg_proof = general_purpose::STANDARD.encode(&proof_bytes);
+                        let pis_string = serde_json::to_string(&proof_pis).expect("Error to convert pis to string");
                         let data = json!({
                             "generated_proof": b64_agg_proof,
+                            "json_proof": proof_base64_json,
+                            "public_values": pis_string
                         });
                         let json = serde_json::to_string(&data).expect("Error converting json to string");
                         let response = Response::new(Body::from(json));
