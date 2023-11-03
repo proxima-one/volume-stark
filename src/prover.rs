@@ -2,6 +2,7 @@ use std::any::type_name;
 
 use anyhow::{ensure, Result};
 use itertools::Itertools;
+use log::Level;
 use once_cell::sync::Lazy;
 use plonky2::field::extension::Extendable;
 use plonky2::field::packable::Packable;
@@ -176,6 +177,7 @@ fn prove_with_commitments<F, C, const D: usize>(
         [(); SumStark::<F, D>::COLUMNS]:,
         [(); SearchStark::<F, D>::COLUMNS]:,
 {
+    let prove_stark = TimingTree::new("prove Arithmetic STARK", Level::Info);
     let arithmetic_proof = timed!(
         timing,
         "prove Arithmetic STARK",
@@ -189,6 +191,8 @@ fn prove_with_commitments<F, C, const D: usize>(
             timing,
         )?
     );
+    prove_stark.print();
+    let prove_stark = TimingTree::new("prove KECCAK STARK", Level::Info);
     let keccak_proof = timed!(
         timing,
         "prove Keccak STARK",
@@ -202,7 +206,9 @@ fn prove_with_commitments<F, C, const D: usize>(
             timing,
         )?
     );
+    prove_stark.print();
     //println!("Permutation proof size {}", keccak_proof.proof.to_bytes().len());
+    let prove_stark = TimingTree::new("prove KECCAK SPONGE STARK", Level::Info);
     let keccak_sponge_proof = timed!(
         timing,
         "prove Keccak sponge STARK",
@@ -216,6 +222,8 @@ fn prove_with_commitments<F, C, const D: usize>(
             timing,
         )?
     );
+    prove_stark.print();
+    let prove_stark = TimingTree::new("provelogic STARK", Level::Info);
     let logic_proof = timed!(
         timing,
         "prove logic STARK",
@@ -229,6 +237,8 @@ fn prove_with_commitments<F, C, const D: usize>(
             timing,
         )?
     );
+    prove_stark.print();
+    let prove_stark = TimingTree::new("prove data STARK", Level::Info);
     let data_proof = timed!(
         timing,
         "prove data STARK",
@@ -242,6 +252,8 @@ fn prove_with_commitments<F, C, const D: usize>(
             timing,
         )?
     );
+    prove_stark.print();
+    let prove_stark = TimingTree::new("prove prove Sum STARK", Level::Info);
     let sum_proof = timed!(
         timing,
         "prove Sum STARK",
@@ -254,10 +266,11 @@ fn prove_with_commitments<F, C, const D: usize>(
             challenger,
             timing,
         )?);
-
+    prove_stark.print();
+    let prove_stark = TimingTree::new("prove search STARK", Level::Info);
     let search_proof = timed!(
         timing,
-        "prove concat STARK",
+        "prove search STARK",
         prove_single_table(
             &all_stark.search_stark,
             config,
@@ -268,6 +281,7 @@ fn prove_with_commitments<F, C, const D: usize>(
             timing,
         )?
     );
+    prove_stark.print();
     Ok([
         arithmetic_proof,
         keccak_proof,

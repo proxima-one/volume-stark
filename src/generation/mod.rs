@@ -212,8 +212,6 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
                 break;
             }
         }
-        println!("{:?}", header_rlp);
-        println!("{:?}", header.parent_hash.clone().as_bytes().to_vec());
         receipt_root_log(&mut state, header_rlp.clone(), receipts_root_offset.clone(), is_receipts_root_in_tree, header.parent_hash.clone().as_bytes().to_vec(), is_first);
         keccak_short_log(&mut state, header_rlp.clone());
         is_first = false;
