@@ -10,6 +10,7 @@ categories = ["cryptography"]
 edition = "2021"
 
 [dependencies]
+regex="1.9.0"
 anyhow = "1.0.40"
 env_logger = "0.10.0"
 eth_trie_utils = "0.6.0"

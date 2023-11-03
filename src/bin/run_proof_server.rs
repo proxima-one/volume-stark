@@ -41,6 +41,7 @@ use maru_volume_stark::config::StarkConfig;
 use maru_volume_stark::generation::PatriciaInputs;
 use maru_volume_stark::patricia_merkle_trie::{convert_to_tree, PatriciaMerklePath, read_paths_from_json_request};
 
+
 type F = GoldilocksField;
 
 const D: usize = 2;
