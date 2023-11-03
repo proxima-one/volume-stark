@@ -76,7 +76,7 @@ const AUX_REGISTER_2: Range<usize> = AUX_REGISTER_1.end..AUX_REGISTER_1.end + 2 
 // Each element c of {MUL,MODULAR}_AUX_REGISTER is -2^20 <= c <= 2^20;
 // this value is used as an offset so that everything is positive in
 // the range checks.
-pub(crate) const AUX_COEFF_ABS_MAX: i64 = 1 << 20;
+pub(crate) const AUX_COEFF_ABS_MAX: i64 = 1 << 10;
 
 // MUL takes 5 * N_LIMBS = 80 columns
 pub(crate) const MUL_AUX_INPUT_LO: Range<usize> = AUX_INPUT_REGISTER_0;

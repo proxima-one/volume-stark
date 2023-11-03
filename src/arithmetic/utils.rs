@@ -321,7 +321,7 @@ pub(crate) fn read_value_i64_limbs<const N: usize, F: PrimeField64>(
 #[inline]
 fn u64_to_array<F: Field>(out: &mut [F], x: u64) {
     const_assert!(LIMB_BITS == 8);
-    debug_assert!(out.len() == 4);
+    debug_assert!(out.len() == 8);
 
     out[0] = F::from_canonical_u8(x as u8);
     out[1] = F::from_canonical_u8((x >> 8) as u8);
