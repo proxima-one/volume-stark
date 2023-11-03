@@ -11,7 +11,7 @@ use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::util::transpose;
 use static_assertions::const_assert;
 
-use crate::arithmetic::{addcy, byte, columns, divmod, modular, mul, Operation};
+use crate::arithmetic::{addcy, columns, mul, Operation};
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
 use crate::cross_table_lookup::{Column};
 use crate::lookup::{eval_lookups, eval_lookups_circuit, permuted_cols};
@@ -114,7 +114,7 @@ pub struct ArithmeticStark<F, const D: usize> {
     pub f: PhantomData<F>,
 }
 
-const RANGE_MAX: usize = 1usize << 16; // Range check strict upper bound
+const RANGE_MAX: usize = 1usize << 8; // Range check strict upper bound
 
 impl<F: RichField, const D: usize> ArithmeticStark<F, D> {
     /// Expects input in *column*-major layout
@@ -206,9 +206,9 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for ArithmeticSta
 
         mul::eval_packed_generic(lv, yield_constr);
         addcy::eval_packed_generic(lv, yield_constr);
-        divmod::eval_packed(lv, nv, yield_constr);
-        modular::eval_packed(lv, nv, yield_constr);
-        byte::eval_packed(lv, yield_constr);
+        // divmod::eval_packed(lv, nv, yield_constr);
+        // modular::eval_packed(lv, nv, yield_constr);
+        // byte::eval_packed(lv, yield_constr);
     }
 
     fn eval_ext_circuit(
@@ -238,9 +238,9 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for ArithmeticSta
 
         mul::eval_ext_circuit(builder, lv, yield_constr);
         addcy::eval_ext_circuit(builder, lv, yield_constr);
-        divmod::eval_ext_circuit(builder, lv, nv, yield_constr);
-        modular::eval_ext_circuit(builder, lv, nv, yield_constr);
-        byte::eval_ext_circuit(builder, lv, yield_constr);
+        // divmod::eval_ext_circuit(builder, lv, nv, yield_constr);
+        // modular::eval_ext_circuit(builder, lv, nv, yield_constr);
+        // byte::eval_ext_circuit(builder, lv, yield_constr);
     }
 
     fn constraint_degree(&self) -> usize {

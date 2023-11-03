@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-pub const LIMB_BITS: usize = 16;
+pub const LIMB_BITS: usize = 8;
 const EVM_REGISTER_BITS: usize = 256;
 
 /// Return the number of LIMB_BITS limbs that are in an EVM

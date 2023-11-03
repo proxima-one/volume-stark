@@ -1,5 +1,6 @@
 use core::mem::{self, MaybeUninit};
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use std::ops::Range;
 use itertools::{zip_eq, Itertools};
 use log::info;
@@ -603,6 +604,10 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
         let mut timing_all_proof = TimingTree::new("ALL PROOF prove", log::Level::Info);
         let all_proof = prove::<F, C, D>(all_stark, config, generation_inputs, patricia_inputs, timing)?;
         timing_all_proof.print();
+        for proof in &all_proof.stark_proofs {
+            let t = format!("{:?}", proof.proof);
+            println!("Proof bogus size {:?}", t.len());
+        }
         let mut root_inputs = PartialWitness::new();
         for table in 0..NUM_TABLES {
             info!("Processint table {table}");
@@ -942,9 +947,20 @@ impl<F, C, const D: usize> RecursiveCircuitsForTableSize<F, C, D>
         stark_proof_with_metadata: &StarkProofWithMetadata<F, C, D>,
         ctl_challenges: &GrandProductChallengeSet<F>,
     ) -> anyhow::Result<ProofWithPublicInputs<F, C, D>> {
+        let timing_print = TimingTree::new("Just prove table", log::Level::Info);
+        //println!("Proof {:?}", stark_proof_with_metadata.proof);
+        // let mut f;
+        // stark_proof_with_metadata.proof.fmt(&mut f);
+        // let mut data;
+        // f.;
+        // println!("Proof {:?}", data.len());
+        let t = format!("{:?}", stark_proof_with_metadata.proof);
+        println!("Proof {:?}", t.len());
+
         let mut proof = self
             .initial_wrapper
             .prove(stark_proof_with_metadata, ctl_challenges)?;
+        timing_print.print();
         for wrapper_circuit in &self.shrinking_wrappers {
             proof = wrapper_circuit.prove(&proof)?;
         }

@@ -21,11 +21,11 @@ pub(crate) mod columns {
     pub const IS_OUTPUT: usize = IS_INPUT + 1;
     pub const CALCULATION_ID: usize = IS_OUTPUT + 1;
     pub const NOT_INIT: usize = CALCULATION_ID + 1;
-    pub const ACUM_SUM: Range<usize> = NOT_INIT + 1..NOT_INIT + 1 + 16;
-    pub const VALUE: Range<usize> = ACUM_SUM.end..ACUM_SUM.end + 16;
-    pub const MULTIPLIER: Range<usize> = VALUE.end..VALUE.end + 16;
-    pub const MULT_RESULT: Range<usize> = MULTIPLIER.end..MULTIPLIER.end + 16;
-    pub const TOKEN_ID: Range<usize> = MULT_RESULT.end..MULT_RESULT.end + 16;
+    pub const ACUM_SUM: Range<usize> = NOT_INIT + 1..NOT_INIT + 1 + 32;
+    pub const VALUE: Range<usize> = ACUM_SUM.end..ACUM_SUM.end + 32;
+    pub const MULTIPLIER: Range<usize> = VALUE.end..VALUE.end + 32;
+    pub const MULT_RESULT: Range<usize> = MULTIPLIER.end..MULTIPLIER.end + 32;
+    pub const TOKEN_ID: Range<usize> = MULT_RESULT.end..MULT_RESULT.end + 32;
 }
 
 pub(crate) const NUM_COLUMNS:usize = columns::TOKEN_ID.end;
