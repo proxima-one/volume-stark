@@ -114,14 +114,17 @@ pub(crate) fn ctl_looking_substr_filter<F: Field>() -> Column<F> {
 pub(crate) fn ctl_looking_value<F: Field>() -> Vec<Column<F>> {
     let cols = DATA_COL_MAP;
     let mut outputs = vec![];
-    for i in (0..16).rev() {
-        let cur_col = Column::linear_combination(
-            cols.typed_data[i * 2..(i + 1) * 2]
-                .iter()
-                .enumerate()
-                .map(|(j, &c)| (c, F::from_canonical_u64(1 << (8 - 8 * j)))),
-        );
-        outputs.push(cur_col);
+    // for i in (0..16).rev() {
+    //     let cur_col = Column::linear_combination(
+    //         cols.typed_data[i * 2..(i + 1) * 2]
+    //             .iter()
+    //             .enumerate()
+    //             .map(|(j, &c)| (c, F::from_canonical_u64(1 << (8 - 8 * j)))),
+    //     );
+    //     outputs.push(cur_col);
+    // }
+    for i in (0..32).rev() {
+        outputs.push(Column::single(cols.typed_data[i]));
     }
     outputs.push(Column::single(
         cols.calculation_id));

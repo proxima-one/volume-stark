@@ -110,9 +110,9 @@ pub fn generate<F: PrimeField64>(lv: &mut [F], left_in: U256, right_in: U256) {
 
     debug_assert!(aux_limbs.iter().all(|&c| c.abs() <= 2 * AUX_COEFF_ABS_MAX));
 
-    lv[MUL_AUX_INPUT_LO].copy_from_slice(&aux_limbs.map(|c| F::from_canonical_u16(c as u16)));
+    lv[MUL_AUX_INPUT_LO].copy_from_slice(&aux_limbs.map(|c| F::from_canonical_u8(c as u8)));
     lv[MUL_AUX_INPUT_HI]
-        .copy_from_slice(&aux_limbs.map(|c| F::from_canonical_u16((c >> 16) as u16)));
+        .copy_from_slice(&aux_limbs.map(|c| F::from_canonical_u8((c >> 8) as u8)));
 }
 
 pub fn eval_packed_generic<P: PackedField>(

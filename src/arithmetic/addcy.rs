@@ -65,6 +65,7 @@ pub(crate) fn generate<F: PrimeField64>(
 
 /// 2^-16 mod (2^64 - 2^32 + 1)
 const GOLDILOCKS_INVERSE_65536: u64 = 18446462594437939201;
+const GOLDILOCKS_INVERSE_256: u64 = 18374686475393433601;
 
 /// Constrains x + y == z + cy*2^256, assuming filter != 0.
 ///
@@ -108,7 +109,7 @@ pub(crate) fn eval_packed_generic_addcy<P: PackedField>(
     );
 
     let overflow = P::Scalar::from_canonical_u64(1u64 << LIMB_BITS);
-    let overflow_inv = P::Scalar::from_canonical_u64(GOLDILOCKS_INVERSE_65536);
+    let overflow_inv = P::Scalar::from_canonical_u64(GOLDILOCKS_INVERSE_256);
     debug_assert!(
         overflow * overflow_inv == P::Scalar::ONE,
         "only works with LIMB_BITS=16 and F=Goldilocks"
@@ -190,7 +191,7 @@ pub(crate) fn eval_ext_circuit_addcy<F: RichField + Extendable<D>, const D: usiz
     // 2^LIMB_BITS in the extension field as an ExtensionTarget
     let overflow = builder.constant_extension(F::Extension::from(overflow_base));
     // 2^-LIMB_BITS in the base field.
-    let overflow_inv = F::from_canonical_u64(GOLDILOCKS_INVERSE_65536);
+    let overflow_inv = F::from_canonical_u64(GOLDILOCKS_INVERSE_256);
 
     let mut cy = builder.zero_extension();
     for ((&xi, &yi), &zi) in x.iter().zip_eq(y).zip_eq(z) {

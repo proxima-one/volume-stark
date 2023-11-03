@@ -320,22 +320,26 @@ pub(crate) fn read_value_i64_limbs<const N: usize, F: PrimeField64>(
 
 #[inline]
 fn u64_to_array<F: Field>(out: &mut [F], x: u64) {
-    const_assert!(LIMB_BITS == 16);
-    debug_assert!(out.len() == 4);
+    const_assert!(LIMB_BITS == 8);
+    debug_assert!(out.len() == 8);
 
-    out[0] = F::from_canonical_u16(x as u16);
-    out[1] = F::from_canonical_u16((x >> 16) as u16);
-    out[2] = F::from_canonical_u16((x >> 32) as u16);
-    out[3] = F::from_canonical_u16((x >> 48) as u16);
+    out[0] = F::from_canonical_u8(x as u8);
+    out[1] = F::from_canonical_u8((x >> 8) as u8);
+    out[2] = F::from_canonical_u8((x >> 16) as u8);
+    out[3] = F::from_canonical_u8((x >> 24) as u8);
+    out[4] = F::from_canonical_u8((x >> 32) as u8);
+    out[5] = F::from_canonical_u8((x >> 40) as u8);
+    out[6] = F::from_canonical_u8((x >> 48) as u8);
+    out[7] = F::from_canonical_u8((x >> 56) as u8);
 }
 
 // TODO: Refactor/replace u256_limbs in evm/src/util.rs
 pub(crate) fn u256_to_array<F: Field>(out: &mut [F], x: U256) {
-    const_assert!(N_LIMBS == 16);
+    const_assert!(N_LIMBS == 32);
     debug_assert!(out.len() == N_LIMBS);
 
-    u64_to_array(&mut out[0..4], x.0[0]);
-    u64_to_array(&mut out[4..8], x.0[1]);
-    u64_to_array(&mut out[8..12], x.0[2]);
-    u64_to_array(&mut out[12..16], x.0[3]);
+    u64_to_array(&mut out[0..8], x.0[0]);
+    u64_to_array(&mut out[8..16], x.0[1]);
+    u64_to_array(&mut out[16..24], x.0[2]);
+    u64_to_array(&mut out[24..32], x.0[3]);
 }

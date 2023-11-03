@@ -5,9 +5,9 @@ use crate::extension_tower::BN_BASE;
 use crate::util::{addmod, mulmod, submod};
 
 mod addcy;
-mod byte;
-mod divmod;
-mod modular;
+//mod byte;
+// mod divmod;
+// mod modular;
 mod mul;
 pub(crate) mod utils;
 
@@ -194,10 +194,10 @@ fn ternary_op_to_rows<F: PrimeField64>(
     let mut row2 = vec![F::ZERO; columns::NUM_ARITH_COLUMNS];
 
     row1[row_filter] = F::ONE;
+    todo!();
+    // modular::generate(&mut row1, &mut row2, row_filter, input0, input1, input2);
 
-    modular::generate(&mut row1, &mut row2, row_filter, input0, input1, input2);
-
-    (row1, Some(row2))
+    // (row1, Some(row2))
 }
 
 fn binary_op_to_rows<F: PrimeField64>(
@@ -220,15 +220,17 @@ fn binary_op_to_rows<F: PrimeField64>(
         }
         BinaryOperator::Div | BinaryOperator::Mod => {
             let mut nv = vec![F::ZERO; columns::NUM_ARITH_COLUMNS];
-            divmod::generate(&mut row, &mut nv, op.row_filter(), input0, input1, result);
-            (row, Some(nv))
+            todo!();
+            // divmod::generate(&mut row, &mut nv, op.row_filter(), input0, input1, result);
+            // (row, Some(nv))
         }
         BinaryOperator::AddFp254 | BinaryOperator::MulFp254 | BinaryOperator::SubFp254 => {
             ternary_op_to_rows::<F>(op.row_filter(), input0, input1, BN_BASE, result)
         }
         BinaryOperator::Byte => {
-            byte::generate(&mut row, input0, input1);
-            (row, None)
+            todo!();
+            // byte::generate(&mut row, input0, input1);
+            // (row, None)
         }
     }
 }
