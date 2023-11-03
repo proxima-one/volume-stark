@@ -5,3 +5,6 @@ target/
 ./proof_data
 Cargo.lock
 circuits/
+test_data/headers/jsons/
+test_data/paths/_data/
+circuit.bin
