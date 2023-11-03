@@ -600,10 +600,13 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
         patricia_inputs: PatriciaInputs,
         timing: &mut TimingTree,
     ) -> anyhow::Result<(ProofWithPublicInputs<F, C, D>, PublicValues)> {
+        let mut timing_all_proof = TimingTree::new("ALL PROOF prove", log::Level::Info);
         let all_proof = prove::<F, C, D>(all_stark, config, generation_inputs, patricia_inputs, timing)?;
+        timing_all_proof.print();
         let mut root_inputs = PartialWitness::new();
         for table in 0..NUM_TABLES {
             info!("Processint table {table}");
+            let mut timing_print = TimingTree::new("Full prove table", log::Level::Info);
             let stark_proof = &all_proof.stark_proofs[table];
             let original_degree_bits = stark_proof.proof.recover_degree_bits(config);
             let table_circuits = &self.by_table[table];
@@ -628,8 +631,9 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
                 F::from_canonical_usize(index_verifier_data),
             );
             root_inputs.set_proof_with_pis_target(&self.root.proof_with_pis[table], &shrunk_proof);
+            timing_print.print();
         }
-
+        let mut timing_root_proof = TimingTree::new("ROOT PROOF prove", log::Level::Info);
         root_inputs.set_verifier_data_target(
             &self.root.cyclic_vk,
             &self.aggregation.circuit.verifier_only,
@@ -642,7 +646,7 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
         );
         //println!("Partial witness: {:?}", root_inputs);
         let root_proof = self.root.circuit.prove(root_inputs)?;
-
+        timing_root_proof.print();
         Ok((root_proof, all_proof.public_values))
     }
 

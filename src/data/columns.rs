@@ -68,7 +68,7 @@ pub(crate) struct DataColumnsView<T: Copy> {
 
     pub range_counter: T,
 
-    pub rc_cols : [T; 2 * KECCAK_RATE_BYTES]
+    pub rc_cols : [T; 2 * KECCAK_RATE_BYTES],
 }
 
 // `u8` is guaranteed to have a `size_of` of 1.

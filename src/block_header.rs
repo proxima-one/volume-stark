@@ -25,9 +25,8 @@ pub struct Header {
     pub logs_bloom: Bloom,
     pub difficulty: U256,
     pub hash: H256,
-    pub number: ethereum_types::U64,
-    // #[serde(deserialize_with = "deserialize_number")]
-    // pub number: U256,
+    #[serde(deserialize_with = "deserialize_u64_or_hex")]
+    pub number: U256,
     pub gas_limit: U256,
     pub gas_used: U256,
     pub timestamp: U256,
@@ -143,12 +142,50 @@ impl<'a> Visitor<'a> for BytesVisitor {
 }
 
 
-fn deserialize_number<'de, D>(deserializer: D) -> Result<U256, D::Error>
+fn deserialize_u64_or_hex<'de, D>(deserializer: D) -> Result<U256, D::Error>
     where
         D: Deserializer<'de>,
 {
-    let number = u128::deserialize(deserializer)?;
-    Ok(U256::from(number))
+    use serde::de::Error;
+    use serde::de::Visitor;
+    use std::fmt;
+
+    struct U256Visitor;
+
+    impl<'de> Visitor<'de> for U256Visitor {
+        type Value = U256;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("an integer or hexadecimal string")
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<U256, E>
+            where
+                E: Error,
+        {
+            Ok(U256::from(value))
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<U256, E>
+            where
+                E: Error,
+        {
+            Ok(U256::from(value))
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<U256, E>
+            where
+                E: Error,
+        {
+            if value.starts_with("0x") {
+                U256::from_str_radix(&value[2..], 16).map_err(E::custom)
+            } else {
+                value.parse().map_err(E::custom)
+            }
+        }
+    }
+
+    deserializer.deserialize_any(U256Visitor)
 }
 
 pub fn read_headers_from_file(file_name: &str) -> Result<Vec<Header>, anyhow::Error> {
