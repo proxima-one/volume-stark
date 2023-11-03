@@ -56,15 +56,12 @@ pub fn generate_proof(
 
     let config = StarkConfig::standard_fast_config();
     let all_stark = AllStark::<F, D>::default();
-
-    let mut timing = TimingTree::new("Generate recursive proof", log::Level::Error);
-
     let recursive_circuit:  AllRecursiveCircuits<GoldilocksField, C, 2> = AllRecursiveCircuits::from_bytes(
         &binary_data,
         &gate_serializer,
         &generator_serializer,
     ).unwrap();
-
+    let mut timing = TimingTree::new("Generate recursive proof", log::Level::Error);
     let (root_proof, pis) = recursive_circuit.prove_root(
         &all_stark,
         &config,
