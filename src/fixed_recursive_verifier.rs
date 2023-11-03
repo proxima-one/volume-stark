@@ -2,6 +2,7 @@ use core::mem::{self, MaybeUninit};
 use std::collections::BTreeMap;
 use std::ops::Range;
 use itertools::{zip_eq, Itertools};
+use log::info;
 use plonky2::field::extension::Extendable;
 use plonky2::gates::constant::ConstantGate;
 use plonky2::gates::noop::NoopGate;
@@ -602,7 +603,7 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
         let all_proof = prove::<F, C, D>(all_stark, config, generation_inputs, patricia_inputs, timing)?;
         let mut root_inputs = PartialWitness::new();
         for table in 0..NUM_TABLES {
-            println!("Processint table {table}");
+            info!("Processint table {table}");
             let stark_proof = &all_proof.stark_proofs[table];
             let original_degree_bits = stark_proof.proof.recover_degree_bits(config);
             let table_circuits = &self.by_table[table];

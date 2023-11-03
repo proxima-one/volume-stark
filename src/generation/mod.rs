@@ -313,8 +313,8 @@ mod tests {
     #[test]
     fn test_regular_proof() -> Result<()> {
         init_logger();
-        let all_paths: Vec<PatriciaMerklePath> = read_paths_from_file("test_data/paths/paths_1.json")?;
-        let block_headers: Vec<Header> = read_headers_from_file("test_data/headers/blockheaders_1.json")?;
+        let all_paths: Vec<PatriciaMerklePath> = read_paths_from_file("test_data/paths/path_element_17488717-17488917.json")?;
+        let block_headers: Vec<Header> = read_headers_from_file("test_data/headers/block_headers_17488717-17488917.json")?;
         let tries = convert_to_tree(&all_paths)?;
         let patricia_inputs: PatriciaInputs = PatriciaInputs {
             pmt: tries,
@@ -327,8 +327,6 @@ mod tests {
         let mut timing = TimingTree::new("generate proof", log::Level::Error);
         let proof = prove::<F, C, D>(&all_stark, &config, inputs.clone(), patricia_inputs.clone(), &mut timing)?;
         timing.print();
-
-        println!("PUBLIC: {:?}", proof.public_values);
         info!("Degree bits: {:?}", proof.degree_bits(&config));
         verify_proof(&all_stark, proof.clone(), &config)?;
         Ok(())

@@ -1,6 +1,7 @@
 use std::mem::size_of;
 
 use itertools::Itertools;
+use log::info;
 use plonky2::field::extension::Extendable;
 use plonky2::field::polynomial::PolynomialValues;
 use plonky2::hash::hash_types::RichField;
@@ -67,11 +68,9 @@ impl<T: Copy> Traces<T> {
     pub fn checkpoint(&self) -> TraceCheckpoint {
         TraceCheckpoint {
             arithmetic_len: self.arithmetic_ops.len(),
-            // cpu_len: self.cpu.len(),
             keccak_len: self.keccak_inputs.len(),
             keccak_sponge_len: self.keccak_sponge_ops.len(),
             logic_len: self.logic_ops.len(),
-            // memory_len: self.memory_ops.len(),
             data_len: self.data_ops.len(),
             sum_len: self.sum_ops.len(),
             search_len: self.search_ops.len(),
@@ -80,24 +79,14 @@ impl<T: Copy> Traces<T> {
 
     pub fn rollback(&mut self, checkpoint: TraceCheckpoint) {
         self.arithmetic_ops.truncate(checkpoint.arithmetic_len);
-        // self.cpu.truncate(checkpoint.cpu_len);
         self.keccak_inputs.truncate(checkpoint.keccak_len);
         self.keccak_sponge_ops
             .truncate(checkpoint.keccak_sponge_len);
         self.logic_ops.truncate(checkpoint.logic_len);
-        // self.memory_ops.truncate(checkpoint.memory_len);
         self.data_ops.truncate(checkpoint.data_len);
         self.sum_ops.truncate(checkpoint.data_len);
         self.search_ops.truncate(checkpoint.search_len);
     }
-
-    // pub fn mem_ops_since(&self, checkpoint: TraceCheckpoint) -> &[MemoryOp] {
-    //     &self.memory_ops[checkpoint.memory_len..]
-    // }
-
-    // pub fn push_cpu(&mut self, val: CpuColumnsView<T>) {
-    //     self.cpu.push(val);
-    // }
 
     pub fn push_logic(&mut self, op: logic::Operation) {
         self.logic_ops.push(op);
@@ -110,19 +99,6 @@ impl<T: Copy> Traces<T> {
     pub fn push_sum(&mut self, op_result: ChainResult) {
         self.sum_ops.push(op_result);
     }
-
-    // pub fn push_search(&mut self, op: SearchOp) {
-    //     self.search_ops.push(op);
-    // }
-
-
-    // pub fn push_public(&mut self, op: PublicOp) {
-    //     self.public_ops.push(op);
-    // }
-
-    // pub fn push_memory(&mut self, op: MemoryOp) {
-    //     self.memory_ops.push(op);
-    // }
 
     pub fn push_keccak(&mut self, input: [u64; keccak::keccak_stark::NUM_INPUTS]) {
         self.keccak_inputs.push(input);
@@ -145,11 +121,6 @@ impl<T: Copy> Traces<T> {
     pub fn push_data(&mut self, op: DataOp) {
         self.data_ops.push(op);
     }
-
-
-    // pub fn clock(&self) -> usize {
-    //     self.cpu.len()
-    // }
 
     pub fn into_tables<const D: usize>(
         self,
@@ -179,7 +150,7 @@ impl<T: Copy> Traces<T> {
             "generate arithmetic trace",
             all_stark.arithmetic_stark.generate_trace(arithmetic_ops)
         );
-        println!("Arithmetic trace: {}", arithmetic_trace[0].len());
+        info!("Arithmetic trace: {}", arithmetic_trace[0].len());
         let keccak_trace = timed!(
             timing,
             "generate Keccak trace",
@@ -187,7 +158,7 @@ impl<T: Copy> Traces<T> {
                 .keccak_stark
                 .generate_trace(keccak_inputs, cap_elements, timing)
         );
-        println!("Permutation trace: {}", keccak_trace[0].len());
+        info!("Permutation trace: {}", keccak_trace[0].len());
         let keccak_sponge_trace = timed!(
             timing,
             "generate Keccak sponge trace",
@@ -195,7 +166,7 @@ impl<T: Copy> Traces<T> {
                 .keccak_sponge_stark
                 .generate_trace(keccak_sponge_ops, cap_elements, timing)
         );
-        println!("Sponge trace: {}", keccak_sponge_trace[0].len());
+        info!("Sponge trace: {}", keccak_sponge_trace[0].len());
         let logic_trace = timed!(
             timing,
             "generate logic trace",
@@ -203,7 +174,7 @@ impl<T: Copy> Traces<T> {
                 .logic_stark
                 .generate_trace(logic_ops, cap_elements, timing)
         );
-        println!("Logic trace: {}", logic_trace[0].len());
+        info!("Logic trace: {}", logic_trace[0].len());
         let (data_trace, search_ops) = timed!(
             timing,
             "generate data trace",
@@ -211,14 +182,14 @@ impl<T: Copy> Traces<T> {
                 .data_stark
                 .generate_trace(data_ops,  timing)
         );
-        println!("Data trace: {}", data_trace[0].len());
+        info!("Data trace: {}", data_trace[0].len());
 
         let sum_trace = timed!(
             timing,
             "generate sum trace",
             all_stark.sum_stark.generate_trace(sum_ops)
         );
-        println!("Sum trace: {}", sum_trace[0].len());
+        info!("Sum trace: {}", sum_trace[0].len());
         let search_trace = timed!(
             timing,
             "generate sum trace",
@@ -226,33 +197,7 @@ impl<T: Copy> Traces<T> {
                 .search_stark
                 .generate_trace(search_ops, timing)
         );
-        println!("Search trace: {}", search_trace[0].len());
-        // let public_trace = timed!(
-        //     timing,
-        //     "generate sum trace",
-        //     all_stark
-        //         .public_stark
-        //         .generate_trace(public_ops, cap_elements, timing)
-        // );
-        // println!("Public trace: {}", public_trace[0].len());
-
-        // let cols = DATA_COL_MAP;
-        // println!("{:?}", data_trace[cols.is_root_data].values.iter().map(|x| T::to_canonical_u64(x)).collect::<Vec<_>>());
-        // for v in &data_trace[41..177] {
-        //     println!("{:?}", v.values.iter().take(4).map(|x| T::to_canonical_u64(x)).collect::<Vec<_>>());
-        // }
-        // println!("{:?}", concat_trace[0].values.iter().map(|x| T::to_canonical_u64(x)).collect::<Vec<_>>());
-        // println!("{:?}", concat_trace[1].values.iter().map(|x| T::to_canonical_u64(x)).collect::<Vec<_>>());
-
-        // println!("{:?}", data_trace[cols.is_full_input_block].values.iter().map(|x| T::to_canonical_u64(x)).collect::<Vec<_>>());
-
-        // for v in &data_trace[6 + 32..6 + 32 + 136] {
-        //     println!("{:?}", v.values.iter().map(|x| T::to_canonical_u64(x)).collect::<Vec<_>>());
-        // }
-        // println!("----");
-        // for v in &keccak_sponge_trace[192..192+136] {
-        //     println!("{:?}", v.values.iter().map(|x| T::to_canonical_u64(x)).collect::<Vec<_>>());
-        // }
+        info!("Search trace: {}", search_trace[0].len());
         [
             arithmetic_trace,
             keccak_trace,
@@ -261,7 +206,6 @@ impl<T: Copy> Traces<T> {
             data_trace,
             sum_trace,
             search_trace,
-            // public_trace
         ]
     }
 }

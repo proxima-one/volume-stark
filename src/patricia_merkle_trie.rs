@@ -377,6 +377,15 @@ impl TreeNode {
             }
         }
     }
+
+    fn print_at_level(&self, indent: String, target_level: usize) {
+        if self.index_level == target_level {
+            info!("{:?}, PATH_INDEX: {:?} {:?}", self.hash, self.num_paths, self.hash_offset);
+        }
+        for child in &self.children {
+            child.print_at_level(indent.clone(), target_level);
+        }
+    }
 }
 
 impl PatriciaTree {
@@ -406,6 +415,38 @@ impl PatriciaTree {
                 hash,
             };
             self.root = Some(Box::new(new_node));
+        }
+    }
+
+
+    pub fn print_at_each_level(&self) {
+        if let Some(root) = &self.root {
+            let max_level = self.get_max_level();
+            for level in 0..=max_level {
+                info!("Level {}", level);
+                root.print_at_level(String::new(), level);
+            }
+        } else {
+            info!("Tree is empty.");
+        }
+    }
+
+    pub fn get_root(&self) -> Option<&TreeNode> {
+        self.root.as_ref().map(|boxed_root| &**boxed_root)
+    }
+
+    fn get_max_level(&self) -> usize {
+        fn find_max_level(node: &TreeNode, current_max: usize) -> usize {
+            let new_max = std::cmp::max(current_max, node.index_level);
+            node.children
+                .iter()
+                .fold(new_max, |max, child| find_max_level(child, max))
+        }
+
+        if let Some(root) = &self.root {
+            find_max_level(root, root.index_level)
+        } else {
+            0
         }
     }
 }
@@ -556,8 +597,11 @@ mod tests {
     #[test]
     fn test_tree() -> Result<()> {
         init_logger();
-        let all_paths: Vec<PatriciaMerklePath> = read_paths_from_file("paths/filtered_data.json")?;
+        let all_paths: Vec<PatriciaMerklePath> = read_paths_from_file("test_data/paths/temp_json.json")?;
         let result = convert_to_tree(&all_paths)?;
+        for tree in result{
+            tree.print_at_each_level();
+        }
         Ok(())
     }
 }
