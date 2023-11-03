@@ -7,7 +7,7 @@ use bytes::Buf;
 use env_logger::{DEFAULT_FILTER_ENV, Env, try_init_from_env};
 use ethereum_types::{H256, U256};
 use itertools::Itertools;
-use log::{error};
+use log::{error, info};
 use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::fri::FriParams;
 use plonky2::plonk::circuit_data::CommonCircuitData;
@@ -15,7 +15,7 @@ use plonky2::plonk::config::PoseidonGoldilocksConfig;
 use plonky2::plonk::proof::ProofWithPublicInputs;
 use plonky2::util::serialization::{DefaultGateSerializer, DefaultGeneratorSerializer};
 use plonky2::util::timing::TimingTree;
-use serde_json::json;
+use serde_json::{json, Value};
 use anyhow::Result;
 use maru_volume_stark::circom_verifier::{generate_proof_base64, generate_verifier_config};
 use maru_volume_stark::fixed_recursive_verifier::AllRecursiveCircuits;
@@ -144,7 +144,6 @@ async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Erro
             let cnt_clone = Arc::clone(&cnt);
             async move {
                 match (req.method(), req.uri().path()) {
-                    
                     (&Method::POST, "/aggregate") => {
                         let recursive_circuit_ref: MutexGuard<_> = match cnt_clone.lock() {
                             Ok(lock) => lock,
@@ -192,10 +191,12 @@ async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Erro
                             .decode_vec(rhs_proof, &mut rhs_proof_bytes);
 
                         if let Err(err) = decode_lhs_proof {
+                            info!("ERROR : {:?}", err);
                             return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "LHS_PROOF_NOT_DECODED"));
                         }
 
                         if let Err(err) = decode_rhs_proof {
+                            info!("ERROR : {:?}", err);
                             return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "RHS_PROOF_NOT_DECODED"));
                         }
 
@@ -217,10 +218,12 @@ async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Erro
                         let second_proof_result: Result<ProofWithPublicInputs<GoldilocksField, C, 2>> = ProofWithPublicInputs::from_bytes(rhs_proof_bytes.clone(), &common_data);
 
                         if let Err(err) = first_proof_result {
+                            info!("ERROR : {:?}", err);
                             return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "LHS_PROOF_NOT_CORRECT"));
                         }
 
                         if let Err(err) = second_proof_result {
+                            info!("ERROR : {:?}", err);
                             return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "RHS_PROOF_NOT_CORRECT"));
                         }
 
@@ -285,25 +288,26 @@ async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Erro
                         };
                         let whole_body_result = req.collect().await;
                         if let Err(err) = whole_body_result {
+                            info!("ERROR : {:?}", err);
                             return Ok::<_, Error>(construct_error_response(StatusCode::INTERNAL_SERVER_ERROR, "REQUEST_BODY_ERROR"));
                         }
                         let whole_body = whole_body_result.unwrap().aggregate();
                         let data_result = serde_json::from_reader(whole_body.reader());
                         if let Err(err) = data_result {
+                            info!("ERROR : {:?}", err);
                             return Ok::<_, Error>(construct_error_response(StatusCode::INTERNAL_SERVER_ERROR, "JSON_NOT_PARSED"));
                         }
                         let data: serde_json::Value = data_result.unwrap();
-
-                        let merkle_paths_json_values = match  data["merkle_paths"].as_array() {
-                            Some(values) => {
-                                values
-                            }
+                        let empty_vec = vec![];
+                        let merkle_paths_json_values = match data["merkle_paths"].as_array() {
+                            Some(values) => values,
                             None => {
-                                return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "MERKLE_PATHS_NOT_INCLUDED"));
+                                &empty_vec
                             }
                         };
 
-                        let block_headers_json_values = match  data["block_headers"].as_array() {
+
+                        let block_headers_json_values = match data["block_headers"].as_array() {
                             Some(values) => {
                                 values
                             }
@@ -312,23 +316,33 @@ async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Erro
                             }
                         };
 
-                        let merkle_paths_result: Result<Vec<PatriciaMerklePath>> = read_paths_from_json_request(merkle_paths_json_values);
+                        let merkle_paths_result: Result<Vec<PatriciaMerklePath>> = if merkle_paths_json_values.is_empty() {
+                            Ok(vec![])
+                        } else { read_paths_from_json_request(merkle_paths_json_values) };
                         if let Err(err) = merkle_paths_result {
+                            info!("ERROR : {:?}", err);
                             return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "MERKLE_PATHS_PARSING_ERROR"));
                         }
                         let merkle_paths = merkle_paths_result.unwrap();
 
                         let block_headers_result: Result<Vec<Header>> = read_headers_from_request(block_headers_json_values);
                         if let Err(err) = block_headers_result {
+                            info!("ERROR : {:?}", err);
                             return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "BLOCK_HEADERS_PARSING_ERROR"));
                         }
                         let block_headers = block_headers_result.unwrap();
 
-                        let tries_result = convert_to_tree(&merkle_paths);
-                        if let Err(err) = tries_result {
-                            return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "TRIES_PARSING_ERROR"));
-                        }
-                        let tries = tries_result.unwrap();
+                        let tries = if merkle_paths.is_empty() {
+                            vec![]
+                        }else{
+                            let converted_trie = convert_to_tree(&merkle_paths);
+                            if let Err(err) = converted_trie {
+                                info!("ERROR : {:?}", err);
+                                return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "TRIES_PARSING_ERROR"));
+                            } else{
+                                converted_trie.unwrap()
+                            }
+                        };
 
                         let patricia_inputs = PatriciaInputs {
                             pmt: tries,
@@ -347,6 +361,7 @@ async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Erro
                         );
                         timing.print();
                         if let Err(err) = prove_result {
+                            info!("ERROR : {:?}", err);
                             return Ok::<_, Error>(construct_error_response(StatusCode::BAD_REQUEST, "PROOF_GENERATION_ERROR"));
                         }
                         let (root_proof, proof_pis) = prove_result.unwrap();
