@@ -8,6 +8,7 @@ use http_body_util::{BodyExt, Full};
 use hyper::Request;
 use hyper_util::rt::TokioIo;
 use log::{error, info};
+use log::Level::Error;
 use serde_json::{json, Value};
 use tokio::net::TcpStream;
 use regex::Regex;
@@ -20,10 +21,11 @@ fn init_logger() {
 
 fn convert_data_to_json(paths_file_name: Option<&str>, block_headers_file_name: &str) -> Result<Value> {
     let json_path = match paths_file_name {
-        None => {Value::String("[]".to_string())}
+        None => { Value::String("[]".to_string()) }
         Some(file_name) => {
-            let file_path = File::open(file_name)?;
-            let path_contents = String::new();
+            let mut file_path = File::open(file_name)?;
+            let mut path_contents = String::new();
+            file_path.read_to_string(&mut path_contents)?;
             let json_path: Value = serde_json::from_str(&path_contents)?;
             json_path
         }
@@ -69,19 +71,24 @@ async fn main() -> Result<()> {
 
     for block_name in block_names.clone() {
         let mut matching_path: Option<&str> = None;
+        if let Some(captures_block) = re.captures(&*block_name) {
+            let start_block = captures_block.get(1).unwrap().as_str();
+            let end_block = captures_block.get(2).unwrap().as_str();
+            if !paths_names.is_empty() {
+                for path_name in &paths_names {
+                    if let Some(captures) = re.captures(path_name) {
+                        let start = captures.get(1).unwrap().as_str();
+                        let end = captures.get(2).unwrap().as_str();
 
-        if !paths_names.is_empty() {
-            for path_name in &paths_names {
-                if let Some(captures) = re.captures(path_name) {
-                    let start = captures.get(1).unwrap().as_str();
-                    let end = captures.get(2).unwrap().as_str();
-
-                    if block_name == start && block_name == end {
-                        matching_path = Some(path_name);
-                        break;
+                        if start_block == start && end_block == end {
+                            matching_path = Some(path_name);
+                            break;
+                        }
                     }
                 }
             }
+        } else {
+            panic!("Wrong block_header format");
         }
 
         paths_with_ranges.push(matching_path);
@@ -143,7 +150,7 @@ async fn generate_proof(url: hyper::Uri, json_value: Value) -> Result<String> {
     let mut res = sender.send_request(req).await?;
     let whole_body = res.collect().await.expect("Error result from request").aggregate();
     let data: serde_json::Value = serde_json::from_reader(whole_body.reader()).expect("JSON not decoded");
-    let proof_b64 = data.clone()["generated_proof"]
+    let proof_b64 = data.clone()["aggregated_proof"]
         .as_str()
         .expect("Proof data not included")
         .to_string();

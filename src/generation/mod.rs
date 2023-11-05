@@ -308,27 +308,27 @@ mod tests {
     }
 
 
-    // #[test]
-    // fn test_regular_proof() -> Result<()> {
-    //     init_logger();
-    //     let all_paths: Vec<PatriciaMerklePath> = read_paths_from_file("test_data/paths/paths_12901300-12901399.json")?;
-    //     let block_headers: Vec<Header> = read_headers_from_file("test_data/headers/block_headers_12901300-12901399.json")?;
-    //     let tries = convert_to_tree(&all_paths)?;
-    //     let patricia_inputs: PatriciaInputs = PatriciaInputs {
-    //         pmt: tries,
-    //         starting_blockhash: block_headers[0].parent_hash.clone(),
-    //         blockheaders: block_headers,
-    //     };
-    //     let inputs: GenerationInputs = Default::default();
-    //     let config = StarkConfig::standard_fast_config();
-    //     let all_stark = AllStark::<F, D>::default();
-    //     let mut timing = TimingTree::new("generate proof", log::Level::Error);
-    //     let proof = prove::<F, C, D>(&all_stark, &config, inputs.clone(), patricia_inputs.clone(), &mut timing)?;
-    //     timing.print();
-    //     info!("Degree bits: {:?}", proof.degree_bits(&config));
-    //     verify_proof(&all_stark, proof.clone(), &config)?;
-    //     Ok(())
-    // }
+    #[test]
+    fn test_regular_proof() -> Result<()> {
+        init_logger();
+        let all_paths: Vec<PatriciaMerklePath> = read_paths_from_file("test_data/paths/paths_12901300-12901399.json")?;
+        let block_headers: Vec<Header> = read_headers_from_file("test_data/headers/block_headers_12901300-12901399.json")?;
+        let tries = convert_to_tree(&all_paths)?;
+        let patricia_inputs: PatriciaInputs = PatriciaInputs {
+            pmt: tries,
+            starting_blockhash: block_headers[0].parent_hash.clone(),
+            blockheaders: block_headers,
+        };
+        let inputs: GenerationInputs = Default::default();
+        let config = StarkConfig::standard_fast_config();
+        let all_stark = AllStark::<F, D>::default();
+        let mut timing = TimingTree::new("generate proof", log::Level::Error);
+        let proof = prove::<F, C, D>(&all_stark, &config, inputs.clone(), patricia_inputs.clone(), &mut timing)?;
+        timing.print();
+        info!("Degree bits: {:?}", proof.degree_bits(&config));
+        verify_proof(&all_stark, proof.clone(), &config)?;
+        Ok(())
+    }
 
 
     #[test]
@@ -353,8 +353,8 @@ mod tests {
         let inputs: GenerationInputs = Default::default();
         let config = StarkConfig::standard_fast_config();
         let all_stark = AllStark::<F, D>::default();
-        let degree_bit_ranges_high = [17usize, 16, 12, 14, 15, 12, 16];
-        let degree_bit_ranges_low = [16usize, 9, 5, 7, 5, 7, 10];
+        let degree_bit_ranges_high = [12usize, 16, 12, 14, 15, 12, 16];
+        let degree_bit_ranges_low = [8usize, 9, 5, 7, 5, 7, 10];
         let degree_bit_ranges = degree_bit_ranges_low.iter().zip(degree_bit_ranges_high.iter()).map(|(x, y)| *x..*y).collect::<Vec<_>>().try_into().unwrap();
         println!("{:?}", degree_bit_ranges);
         let recursive_circuit: AllRecursiveCircuits<GoldilocksField, C, D> = AllRecursiveCircuits::new(
