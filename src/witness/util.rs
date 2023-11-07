@@ -11,13 +11,14 @@ use crate::arithmetic::{Operation, BinaryOperator};
 // use crate::cpu::membus::{NUM_CHANNELS, NUM_GP_CHANNELS};
 // use crate::cpu::stack_bounds::MAX_USER_STACK_SIZE;
 use crate::data::columns::KECCAK_DIGEST_BYTES;
-use crate::data::data_stark::{DataOp, DataType, DataItem};
+use crate::data::data_stark::{DataOp, DataType, DataItem, EventLogPart};
 use crate::generation::GenerationState;
 // use crate::generation::state::GenerationState;
 use crate::keccak_sponge::columns::{KECCAK_RATE_BYTES, KECCAK_WIDTH_BYTES};
 use crate::keccak_sponge::keccak_sponge_stark::KeccakSpongeOp;
 use crate::keccak_sponge::keccak_util::keccakf_u8s;
 use crate::logic;
+use crate::patricia_merkle_trie::{EventParts, PatriciaMerklePathElement};
 // use crate::public::PublicOp;
 use crate::search_substring::search_stark::SearchOp;
 // use crate::memory::segments::Segment;
@@ -287,54 +288,60 @@ pub(crate) fn data_log<F: Field>(
 ) {
     state.traces.push_data(DataOp {
         input: input,
-        contract: None,
         child: None,
         external_child: None,
-        value: None,
         data_type: DataType::Leaf,
-        method_signature: None,
         receipts_root: None,
-        token_id: None,
         pi_sum: None,
+        event_logs: None,
     });
 }
 
 pub(crate) fn data_leaf_log<F: Field>(
     state: &mut GenerationState<F>,
     input: Vec<u8>,
-    contract_offset: usize,
-    value_offset: usize,
-    method_offset: usize,
-    sold_token_id_offset: usize
+    event_logs: &[EventParts],
+    pmt_element: PatriciaMerklePathElement
 ) {
-    let contract_data: [u8; KECCAK_DIGEST_BYTES] = input[contract_offset..contract_offset + KECCAK_DIGEST_BYTES].try_into().unwrap();
-    let value_data: [u8; KECCAK_DIGEST_BYTES] = input[value_offset..value_offset + KECCAK_DIGEST_BYTES].try_into().unwrap();
-    let method_data: [u8; KECCAK_DIGEST_BYTES] = input[method_offset..method_offset + KECCAK_DIGEST_BYTES].try_into().unwrap();
-    let sold_token_id: [u8; KECCAK_DIGEST_BYTES] = input[sold_token_id_offset..sold_token_id_offset + KECCAK_DIGEST_BYTES].try_into().unwrap();
+    let mut event_parts = vec![];
+    for event in event_logs{
+        let sold_token_id_offset = event.sold_token_id_index + pmt_element.clone().prefix.len();
+        let value_offset = event.sold_token_volume_index + pmt_element.clone().prefix.len();
+        let method_offset = event.event_selector_index + pmt_element.clone().prefix.len();
+        let contract_offset = event.pool_address_index + pmt_element.clone().prefix.len();
+        let contract_data: [u8; KECCAK_DIGEST_BYTES] = input[contract_offset..contract_offset + KECCAK_DIGEST_BYTES].try_into().unwrap();
+        let value_data: [u8; KECCAK_DIGEST_BYTES] = input[value_offset..value_offset + KECCAK_DIGEST_BYTES].try_into().unwrap();
+        let method_data: [u8; KECCAK_DIGEST_BYTES] = input[method_offset..method_offset + KECCAK_DIGEST_BYTES].try_into().unwrap();
+        let sold_token_id: [u8; KECCAK_DIGEST_BYTES] = input[sold_token_id_offset..sold_token_id_offset + KECCAK_DIGEST_BYTES].try_into().unwrap();
+        event_parts.push(EventLogPart{
+            contract: DataItem {
+                        offset: contract_offset,
+                        item: contract_data,
+                        offset_in_block: (contract_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES,
+                    },
+            value:DataItem {
+                        offset: value_offset,
+                        item: value_data,
+                        offset_in_block: (value_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES,
+                    },
+            token_id: DataItem{
+                        offset: sold_token_id_offset,
+                        item: sold_token_id,
+                        offset_in_block: (sold_token_id_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES
+                    },
+            method_signature: DataItem {
+                        offset: method_offset,
+                        item: method_data,
+                        offset_in_block: (method_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES,
+                    },
+        })
+    }
+    event_parts.sort_by(|a, b| a.contract.offset.cmp(&b.contract.offset));
     state.traces.push_data(DataOp {
         input: input.clone(),
-        contract: Some(DataItem {
-            offset: contract_offset,
-            item: contract_data,
-            offset_in_block: (contract_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES,
-        }),
+        event_logs: Some(event_parts),
         child: None,
         external_child: None,
-        value: Some(DataItem {
-            offset: value_offset,
-            item: value_data,
-            offset_in_block: (value_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES,
-        }),
-        method_signature: Some(DataItem {
-            offset: method_offset,
-            item: method_data,
-            offset_in_block: (method_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES,
-        }),
-        token_id: Some(DataItem{
-            offset: sold_token_id_offset,
-            item: sold_token_id,
-            offset_in_block: (sold_token_id_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES
-        }),
         data_type: DataType::Leaf,
         receipts_root: None,
         pi_sum: None,
@@ -344,9 +351,10 @@ pub(crate) fn data_leaf_log<F: Field>(
 pub(crate) fn data_node_log<F: Field>(
     state: &mut GenerationState<F>,
     input: Vec<u8>,
-    hash_offset: Vec<usize>,
+    mut hash_offset: Vec<usize>,
 ) {
     let mut node_childs: Vec<DataItem> = vec![];
+    hash_offset.sort();
     for offset in hash_offset {
         let child_hash: [u8; KECCAK_DIGEST_BYTES] = input[offset.clone()..offset.clone() + KECCAK_DIGEST_BYTES].try_into().unwrap();
         let item = DataItem {
@@ -358,15 +366,12 @@ pub(crate) fn data_node_log<F: Field>(
     }
     state.traces.push_data(DataOp {
         input: input.clone(),
-        contract: None,
         child: Some(node_childs),
         external_child: None,
-        value: None,
         data_type: DataType::Node,
-        method_signature: None,
         receipts_root: None,
-        token_id: None,
         pi_sum: None,
+        event_logs: None,
     });
 }
 
@@ -381,7 +386,7 @@ pub(crate) fn receipt_root_log<F: Field>(
     let receipts_root: [u8; KECCAK_DIGEST_BYTES] = input[offset.clone()..offset.clone() + KECCAK_DIGEST_BYTES].try_into().unwrap();
     state.traces.push_data(DataOp {
         input: input.clone(),
-        contract: None,
+        event_logs: None,
         child: if !is_external {
             Some(vec![
                 DataItem {
@@ -400,9 +405,7 @@ pub(crate) fn receipt_root_log<F: Field>(
                 }
             ])
         } else { None },
-        value: None,
         data_type: DataType::ReceiptsRoot,
-        method_signature: None,
         receipts_root: if root_in_tree {
             Some(DataItem {
                 offset: offset.clone(),
@@ -410,7 +413,6 @@ pub(crate) fn receipt_root_log<F: Field>(
                 offset_in_block: (offset.clone() + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES,
             })
         } else { None },
-        token_id: None,
         pi_sum: None,
     });
 }
@@ -423,18 +425,15 @@ pub(crate) fn block_hash_log<F: Field>(
     let block_hash: [u8; KECCAK_DIGEST_BYTES] = input[..KECCAK_DIGEST_BYTES].try_into().unwrap();
     state.traces.push_data(DataOp {
         input: input.clone(),
-        contract: None,
+        event_logs: None,
         child: Some(vec![DataItem {
             offset: 0,
             item: block_hash,
             offset_in_block: KECCAK_DIGEST_BYTES,
         }]),
         external_child: None,
-        value: None,
         data_type: DataType::BlockHash,
-        method_signature: None,
         receipts_root: None,
-        token_id: None,
         pi_sum: None,
     });
 }
@@ -447,14 +446,11 @@ pub(crate) fn pi_sum_log<F: Field>(
     let pi_sum: [u8; KECCAK_DIGEST_BYTES] = input[..KECCAK_DIGEST_BYTES].try_into().unwrap();
     state.traces.push_data(DataOp {
         input: input.clone(),
-        contract: None,
+        event_logs: None,
         child: None,
         external_child: None,
-        value: None,
         data_type: DataType::TotalSum ,
-        method_signature: None,
         receipts_root: None,
-        token_id: None,
         pi_sum: Some(DataItem {
             offset: 0,
             item: pi_sum,

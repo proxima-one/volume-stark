@@ -16,11 +16,12 @@ use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer
 use crate::cross_table_lookup::Column;
 use crate::data::columns;
 use crate::data::columns::*;
-use crate::lookup::{eval_lookups, eval_lookups_circuit, permuted_cols};
+use crate::lookup::{eval_lookups, eval_lookups_circuit, eval_lookups_circuit_diff, eval_lookups_diff, permuted_cols};
 use crate::permutation::PermutationPair;
 use crate::search_substring::search_stark::columns::{HAYSTACK_SIZE};
 use crate::search_substring::search_stark::SearchOp;
 use crate::stark::Stark;
+use crate::summation::sum_stark::columns::TOKEN_ID;
 use crate::util::trace_rows_to_poly_values;
 use crate::vars::{StarkEvaluationTargets, StarkEvaluationVars};
 
@@ -132,7 +133,6 @@ pub(crate) fn ctl_looking_value<F: Field>() -> Vec<Column<F>> {
 }
 
 
-
 pub(crate) fn ctl_looking_arithmetic_filter<F: Field>() -> Column<F> {
     let cols = DATA_COL_MAP;
     Column::single(cols.transfer_value_found)
@@ -141,11 +141,21 @@ pub(crate) fn ctl_looking_arithmetic_filter<F: Field>() -> Column<F> {
 
 const RANGE_MAX: usize = 1usize << 8;
 
+const RANGE_MAX_DIFF: usize = 1usize << 5;
+
 #[derive(Clone, Debug, Copy)]
 pub(crate) struct DataItem {
     pub(crate) offset: usize,
     pub(crate) offset_in_block: usize,
     pub(crate) item: [u8; KECCAK_DIGEST_BYTES],
+}
+
+#[derive(Clone, Debug, Copy)]
+pub(crate) struct EventLogPart {
+    pub(crate) contract: DataItem,
+    pub(crate) value: DataItem,
+    pub(crate) token_id: DataItem,
+    pub(crate) method_signature: DataItem,
 }
 
 
@@ -161,15 +171,12 @@ pub enum DataType {
 #[derive(Clone, Debug)]
 pub(crate) struct DataOp {
     pub(crate) input: Vec<u8>,
-    pub(crate) contract: Option<DataItem>,
-    pub(crate) value: Option<DataItem>,
+    pub(crate) event_logs: Option<Vec<EventLogPart>>,
     pub(crate) child: Option<Vec<DataItem>>,
     pub(crate) external_child: Option<Vec<DataItem>>,
     pub(crate) data_type: DataType,
-    pub(crate) method_signature: Option<DataItem>,
     pub(crate) receipts_root: Option<DataItem>,
-    pub(crate) token_id: Option<DataItem>,
-    pub(crate) pi_sum: Option<DataItem>
+    pub(crate) pi_sum: Option<DataItem>,
 }
 
 #[derive(Copy, Clone, Default)]
@@ -178,7 +185,6 @@ pub struct DataStark<F, const D: usize> {
 }
 
 impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
-
     fn generate_range_checks(&self, cols: &mut Vec<Vec<F>>) {
         debug_assert!(cols.len() == NUM_DATA_COLUMNS);
         let n_rows = cols[0].len();
@@ -187,14 +193,27 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         for i in 0..RANGE_MAX {
             cols[RANGE_COUNTER][i] = F::from_canonical_usize(i);
         }
+
         for i in RANGE_MAX..n_rows {
             cols[RANGE_COUNTER][i] = F::from_canonical_usize(RANGE_MAX - 1);
+        }
+
+        for i in 0..RANGE_MAX_DIFF - 1 {
+            cols[RANGE_COUNTER_OFFSET_DIFF][i] = F::from_canonical_usize(i + 1);
+        }
+        for i in RANGE_MAX_DIFF - 1..n_rows {
+            cols[RANGE_COUNTER_OFFSET_DIFF][i] = F::from_canonical_usize(RANGE_MAX_DIFF - 1);
         }
         for (c, rc_c) in BLOCK_BYTES.zip(RC_COLS.step_by(2)) {
             let (col_perm, table_perm) = permuted_cols(&cols[c], &cols[RANGE_COUNTER]);
             cols[rc_c].copy_from_slice(&col_perm);
             cols[rc_c + 1].copy_from_slice(&table_perm);
         }
+
+
+        let (col_perm, table_perm) = permuted_cols(&cols[START_OFFSET_DIFF], &cols[RANGE_COUNTER_OFFSET_DIFF]);
+        cols[RC_COLS_OFFSET_DIFF.start].copy_from_slice(&col_perm);
+        cols[RC_COLS_OFFSET_DIFF.start + 1].copy_from_slice(&table_perm);
     }
 
     pub(crate) fn generate_trace(
@@ -284,13 +303,29 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         let mut already_absorbed_bytes = 0;
         let mut index_block = 0;
         let mut previous_block: Option<DataColumnsView<F>> = None;
+        let mut diff_offset_contract: usize = 0;
+        let mut diff_offset_method: usize = 0;
+        let mut diff_offset_token: usize = 0;
+        let mut diff_offset_value: usize = 0;
+        let mut index_contract: usize = 0;
+        let mut index_method: usize = 0;
+        let mut index_token: usize = 0;
+        let mut index_value: usize = 0;
         for block in input_blocks.by_ref() {
             let mut block_rows = self.generate_full_input_row(
                 &op,
                 already_absorbed_bytes,
                 block.try_into().unwrap(),
                 index,
-                calculation_id
+                calculation_id,
+                &mut diff_offset_contract,
+                &mut diff_offset_method,
+                &mut diff_offset_token,
+                &mut diff_offset_value,
+                &mut index_contract,
+                &mut index_method,
+                &mut index_token,
+                &mut index_value,
             );
             let mut temp_row: DataColumnsView<F> = Default::default();
             if index_block == 0 {
@@ -316,7 +351,15 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
             already_absorbed_bytes,
             input_blocks.remainder(),
             index,
-            calculation_id
+            calculation_id,
+            &mut diff_offset_contract,
+            &mut diff_offset_method,
+            &mut diff_offset_token,
+            &mut diff_offset_value,
+            &mut index_contract,
+            &mut index_method,
+            &mut index_token,
+            &mut index_value,
         );
         for mut row in final_rows.clone() {
             if let Some(prev_block) = &previous_block {
@@ -337,14 +380,24 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         already_absorbed_bytes: usize,
         block: [u8; KECCAK_RATE_BYTES],
         index: &mut u64,
-        calculation_id: &mut u64
+        calculation_id: &mut u64,
+        diff_offset_contract: &mut usize,
+        diff_offset_method: &mut usize,
+        diff_offset_token: &mut usize,
+        diff_offset_value: &mut usize,
+        index_contract: &mut usize,
+        index_method: &mut usize,
+        index_token: &mut usize,
+        index_value: &mut usize,
     ) -> Vec<DataColumnsView<F>> {
         let mut row = DataColumnsView {
             is_full_input_block: F::ONE,
             ..Default::default()
         };
         row.block_bytes = block.map(F::from_canonical_u8);
-        Self::generate_common_fields(&mut row, op, already_absorbed_bytes, index, calculation_id)
+        Self::generate_common_fields(&mut row, op, already_absorbed_bytes, index, calculation_id, diff_offset_contract, diff_offset_method, diff_offset_token, diff_offset_value, index_contract, index_method,
+                                     index_token,
+                                     index_value)
     }
 
 
@@ -354,7 +407,15 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         already_absorbed_bytes: usize,
         final_inputs: &[u8],
         index: &mut u64,
-        calculation_id: &mut u64
+        calculation_id: &mut u64,
+        diff_offset_contract: &mut usize,
+        diff_offset_method: &mut usize,
+        diff_offset_token: &mut usize,
+        diff_offset_value: &mut usize,
+        index_contract: &mut usize,
+        index_method: &mut usize,
+        index_token: &mut usize,
+        index_value: &mut usize,
     ) -> Vec<DataColumnsView<F>> {
         assert_eq!(already_absorbed_bytes + final_inputs.len(), op.input.len());
 
@@ -375,7 +436,9 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
 
 
         row.last_block = F::from_bool(true);
-        Self::generate_common_fields(&mut row, op, already_absorbed_bytes, index, calculation_id)
+        Self::generate_common_fields(&mut row, op, already_absorbed_bytes, index, calculation_id, diff_offset_contract, diff_offset_method, diff_offset_token, diff_offset_value, index_contract, index_method,
+                                     index_token,
+                                     index_value)
     }
 
     fn generate_data_fields(row: &mut DataColumnsView<F>,
@@ -393,7 +456,15 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         op: &DataOp,
         already_absorbed_bytes: usize,
         index_op: &mut u64,
-        calculation_id: &mut u64
+        calculation_id: &mut u64,
+        diff_offset_contract: &mut usize,
+        diff_offset_method: &mut usize,
+        diff_offset_token: &mut usize,
+        diff_offset_value: &mut usize,
+        index_contract: &mut usize,
+        index_method: &mut usize,
+        index_token: &mut usize,
+        index_value: &mut usize,
     ) -> Vec<DataColumnsView<F>> {
         let mut rows: Vec<DataColumnsView<F>> = vec![];
         row.len = F::from_canonical_usize(op.input.len());
@@ -403,53 +474,77 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         row.is_receipts_root = F::from_bool(op.data_type == DataType::ReceiptsRoot);
         row.is_block_hash = F::from_bool(op.data_type == DataType::BlockHash);
         let mut row_clone = row.clone();
-        match op.contract {
+        match op.event_logs.clone() {
             Some(item) => {
-                if (item.offset + KECCAK_DIGEST_BYTES >= already_absorbed_bytes) && (item.offset + KECCAK_DIGEST_BYTES < already_absorbed_bytes + KECCAK_RATE_BYTES) {
-                    row_clone = row.clone();
-                    row_clone.contract_address_found = F::from_bool(true);
-                    Self::generate_data_fields(&mut row_clone, &item);
-                    rows.push(row_clone.clone());
+                for event in item {
+                    if (event.contract.offset + KECCAK_DIGEST_BYTES >= already_absorbed_bytes) && (event.contract.offset + KECCAK_DIGEST_BYTES < already_absorbed_bytes + KECCAK_RATE_BYTES) {
+                        row_clone = row.clone();
+                        row_clone.contract_address_found = F::from_bool(true);
+                        if *index_contract == 0usize {
+                            let diff = event.contract.offset.clone() / 200;
+                            row_clone.offset_diff = F::from_canonical_u8(diff as u8);
+                        } else {
+                            let diff = (event.contract.offset.clone() - *diff_offset_contract) / 200;
+                            row_clone.offset_diff = F::from_canonical_usize(diff);
+                        }
+                        *diff_offset_contract = event.contract.offset;
+                        *index_contract += 1;
+                        Self::generate_data_fields(&mut row_clone, &event.contract);
+
+                        rows.push(row_clone.clone());
+                    }
+                    if (event.method_signature.offset + KECCAK_DIGEST_BYTES >= already_absorbed_bytes) && (event.method_signature.offset + KECCAK_DIGEST_BYTES < already_absorbed_bytes + KECCAK_RATE_BYTES) {
+                        row_clone = row.clone();
+                        row_clone.method_signature_found = F::from_bool(true);
+                        if *index_method == 0usize {
+                            let diff = event.method_signature.offset.clone() / 200;
+                            row_clone.offset_diff = F::from_canonical_u8(diff as u8);
+                        } else {
+                            let diff = (event.method_signature.offset.clone() - *diff_offset_method) / 200;
+                            row_clone.offset_diff = F::from_canonical_usize(diff);
+                        }
+                        *diff_offset_method = event.method_signature.offset;
+                        *index_method += 1;
+                        Self::generate_data_fields(&mut row_clone, &event.method_signature);
+                        rows.push(row_clone.clone());
+                    }
+                    if (event.token_id.offset + KECCAK_DIGEST_BYTES >= already_absorbed_bytes) && (event.token_id.offset + KECCAK_DIGEST_BYTES < already_absorbed_bytes + KECCAK_RATE_BYTES) {
+                        row_clone = row.clone();
+                        row_clone.sold_token_id_found = F::from_bool(true);
+                        if *index_token == 0usize {
+                            let diff = event.token_id.offset.clone() / 200;
+                            row_clone.offset_diff = F::from_canonical_u8(diff as u8);
+                        } else {
+                            let diff = (event.token_id.offset.clone() - *diff_offset_token) / 200;
+                            row_clone.offset_diff = F::from_canonical_usize(diff);
+                        }
+                        *diff_offset_token = event.token_id.offset;
+                        *index_token += 1;
+                        Self::generate_data_fields(&mut row_clone, &event.token_id);
+                        row_clone.calculation_id = F::from_canonical_u64(*calculation_id);
+                        rows.push(row_clone.clone());
+                    }
+                    if (event.value.offset + KECCAK_DIGEST_BYTES >= already_absorbed_bytes) && (event.value.offset + KECCAK_DIGEST_BYTES < already_absorbed_bytes + KECCAK_RATE_BYTES) {
+                        row_clone = row.clone();
+                        if *index_value == 0usize {
+                            let diff = event.value.offset.clone() / 200;
+                            row_clone.offset_diff = F::from_canonical_u8(diff as u8);
+                        } else {
+                            let diff = (event.value.offset.clone() - *diff_offset_value) / 200;
+                            row_clone.offset_diff = F::from_canonical_usize(diff);
+                        }
+                        *diff_offset_value = event.value.offset;
+                        *index_value += 1;
+                        Self::generate_data_fields(&mut row_clone, &event.value);
+                        row_clone.calculation_id = F::from_canonical_u64(*calculation_id);
+                        row_clone.transfer_value_found = F::from_bool(true);
+                        *calculation_id += 1;
+                        rows.push(row_clone.clone());
+                    }
                 }
             }
             None => {}
-        };
-        match op.method_signature {
-            Some(item) => {
-                if (item.offset + KECCAK_DIGEST_BYTES >= already_absorbed_bytes) && (item.offset + KECCAK_DIGEST_BYTES < already_absorbed_bytes + KECCAK_RATE_BYTES) {
-                    row_clone = row.clone();
-                    row_clone.method_signature_found = F::from_bool(true);
-                    Self::generate_data_fields(&mut row_clone, &item);
-                    rows.push(row_clone.clone());
-                }
-            }
-            None => {}
-        };
-        match op.token_id {
-            Some(item) => {
-                if (item.offset + KECCAK_DIGEST_BYTES >= already_absorbed_bytes) && (item.offset + KECCAK_DIGEST_BYTES < already_absorbed_bytes + KECCAK_RATE_BYTES) {
-                    row_clone = row.clone();
-                    row_clone.sold_token_id_found = F::from_bool(true);
-                    Self::generate_data_fields(&mut row_clone, &item);
-                    row_clone.calculation_id = F::from_canonical_u64(*calculation_id);
-                    rows.push(row_clone.clone());
-                }
-            }
-            None => {}
-        };
-        match op.value {
-            Some(item) => {
-                if (item.offset + KECCAK_DIGEST_BYTES >= already_absorbed_bytes) && (item.offset + KECCAK_DIGEST_BYTES < already_absorbed_bytes + KECCAK_RATE_BYTES) {
-                    row_clone = row.clone();
-                    Self::generate_data_fields(&mut row_clone, &item);
-                    row_clone.calculation_id = F::from_canonical_u64(*calculation_id);
-                    row_clone.transfer_value_found = F::from_bool(true);
-                    *calculation_id += 1;
-                    rows.push(row_clone.clone());
-                }
-            }
-            None => {}
-        };
+        }
         match op.child.clone() {
             Some(mut data_items) => {
                 let mut index = 0;
@@ -490,7 +585,7 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
             }
             None => {}
         };
-        match op.pi_sum{
+        match op.pi_sum {
             Some(item) => {
                 if (item.offset + KECCAK_DIGEST_BYTES >= already_absorbed_bytes) && (item.offset + KECCAK_DIGEST_BYTES < already_absorbed_bytes + KECCAK_RATE_BYTES) {
                     row_clone = row.clone();
@@ -517,9 +612,9 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
                 rows[i].id = F::from_canonical_u64(*index_op);
                 *index_op += 1;
             }
-            if rows[0].last_block == F::from_bool(true){
+            if rows[0].last_block == F::from_bool(true) {
                 rows[0].last_block = F::from_bool(false);
-                if let Some(row) = rows.last_mut(){
+                if let Some(row) = rows.last_mut() {
                     row.last_block = F::from_bool(true);
                 }
             }
@@ -552,6 +647,15 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
             eval_lookups(vars, yield_constr, col, col + 1);
         }
 
+
+        for col in RC_COLS_OFFSET_DIFF.step_by(2) {
+            eval_lookups_diff(vars, yield_constr, col, col + 1, CONTRACT_ADDRESS_FOUND);
+            eval_lookups_diff(vars, yield_constr, col, col + 1, TRANSFER_VALUE_FOUND);
+            eval_lookups_diff(vars, yield_constr, col, col + 1, METHOD_SIGNATURE_FOUND);
+            eval_lookups_diff(vars, yield_constr, col, col + 1, SOLD_TOKEN_ID_FOUND);
+        }
+
+
         let local_values: &DataColumnsView<P> = vars.local_values.borrow();
         let next_values: &DataColumnsView<P> = vars.next_values.borrow();
 
@@ -563,13 +667,21 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
         let range_max = P::Scalar::from_canonical_u64((RANGE_MAX - 1) as u64);
         yield_constr.constraint_last_row(rc1 - range_max);
 
+        let rc1 = local_values.range_counter_offset_diff;
+        let rc2 = next_values.range_counter_offset_diff;
+        yield_constr.constraint_first_row(rc1 * rc1 - P::ONES);
+        let incr = rc2 - rc1;
+        yield_constr.constraint_transition(incr * incr - incr);
+        let range_max = P::Scalar::from_canonical_u64((RANGE_MAX_DIFF - 1) as u64);
+        yield_constr.constraint_last_row(rc1 - range_max);
+
         let method_signature: [u8; 32] = [139, 62, 150, 242, 184, 137, 250, 119, 28, 83, 201, 129, 180, 13, 175, 0, 95, 99, 246, 55, 241, 134, 159, 112, 112, 82, 209, 90, 61, 217, 113, 64];
         let converted_method_signature = method_signature.map(|byte| P::from(FE::from_canonical_u8(byte)));
 
         let pool_address: [u8; 20] = [190, 188, 68, 120, 44, 125, 176, 161, 166, 12, 182, 254, 151, 208, 180, 131, 3, 47, 241, 199];
         let converted_pool_address = pool_address.map(|byte| P::from(FE::from_canonical_u8(byte)));
         let method_length = P::from(FE::from_canonical_u8(32));
-        let token_id_length  = P::from(FE::from_canonical_u8(32));
+        let token_id_length = P::from(FE::from_canonical_u8(32));
         let contract_length = P::from(FE::from_canonical_u8(20));
 
         let offset_contract_method = P::from(FE::from_canonical_u8(3));
@@ -648,8 +760,16 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
         yield_constr: &mut RecursiveConstraintConsumer<F, D>,
     ) {
 
+        let one = builder.one_extension();
         for col in RC_COLS.step_by(2) {
             eval_lookups_circuit(builder, vars, yield_constr, col, col + 1);
+        }
+
+        for col in RC_COLS_OFFSET_DIFF.step_by(2) {
+            eval_lookups_circuit_diff(builder, vars, yield_constr, col, col + 1, CONTRACT_ADDRESS_FOUND);
+            eval_lookups_circuit_diff(builder, vars, yield_constr, col, col + 1, TRANSFER_VALUE_FOUND);
+            eval_lookups_circuit_diff(builder, vars, yield_constr, col, col + 1, METHOD_SIGNATURE_FOUND);
+            eval_lookups_circuit_diff(builder, vars, yield_constr, col, col + 1, SOLD_TOKEN_ID_FOUND);
         }
 
         let local_values: &DataColumnsView<ExtensionTarget<D>> = vars.local_values.borrow();
@@ -666,8 +786,17 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
         let t = builder.sub_extension(rc1, range_max);
         yield_constr.constraint_last_row(builder, t);
 
-
-        let one = builder.one_extension();
+        let rc1 = local_values.range_counter_offset_diff;
+        let rc2 = next_values.range_counter_offset_diff;
+        let a = builder.mul_sub_extension(rc1, rc1, one);
+        yield_constr.constraint_first_row(builder, a);
+        let incr = builder.sub_extension(rc2, rc1);
+        let t = builder.mul_sub_extension(incr, incr, incr);
+        yield_constr.constraint_transition(builder, t);
+        let range_max =
+            builder.constant_extension(F::Extension::from_canonical_usize(RANGE_MAX_DIFF - 1));
+        let t = builder.sub_extension(rc1, range_max);
+        yield_constr.constraint_last_row(builder, t);
 
         let method_signature: [u8; 32] = [139, 62, 150, 242, 184, 137, 250, 119, 28, 83, 201, 129, 180, 13, 175, 0, 95, 99, 246, 55, 241, 134, 159, 112, 112, 82, 209, 90, 61, 217, 113, 64];
         let converted_method_signature = method_signature.map(|byte| F::Extension::from_canonical_u8(byte));
@@ -677,7 +806,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
 
         let contract_length = builder.constant_extension(F::Extension::from_canonical_u8(20));
         let method_length = builder.constant_extension(F::Extension::from_canonical_u8(32));
-        let token_id_length  = builder.constant_extension(F::Extension::from_canonical_u8(32));
+        let token_id_length = builder.constant_extension(F::Extension::from_canonical_u8(32));
 
         let offset_contract_method = builder.constant_extension(F::Extension::from_canonical_u8(3));
         let offset_contract_token_id = builder.constant_extension(F::Extension::from_canonical_u8(35));
@@ -813,6 +942,15 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
             pairs.push(PermutationPair::singletons(
                 c_perm + 1,
                 RANGE_COUNTER,
+            ));
+        }
+
+        const START_DIFF: usize = START_OFFSET_DIFF;
+        for (c, c_perm) in (START_DIFF..START_DIFF).zip_eq(RC_COLS_OFFSET_DIFF.step_by(2)) {
+            pairs.push(PermutationPair::singletons(c, c_perm));
+            pairs.push(PermutationPair::singletons(
+                c_perm + 1,
+                RANGE_COUNTER_OFFSET_DIFF,
             ));
         }
         pairs

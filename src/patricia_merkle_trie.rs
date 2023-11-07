@@ -262,7 +262,7 @@ pub fn read_paths_from_file(file_name: &str) -> Result<Vec<PatriciaMerklePath>, 
 pub fn read_paths_from_json_request(objects_arr: &Vec<Value>) -> Result<Vec<PatriciaMerklePath>, anyhow::Error> {
     let mut merkle_path: Vec<PatriciaMerklePathElement> = vec![];
     let mut paths: Vec<PatriciaMerklePath> = vec![];
-    for object in objects_arr{
+    for object in objects_arr {
         let paths_str: PatriciaMerklePathStr = serde_json::from_value(object.clone()).unwrap();
         for j in paths_str.merkle_path.iter() {
             merkle_path.push(PatriciaMerklePathElement {
@@ -322,7 +322,7 @@ pub struct TreeNode {
     pub value: Option<PatriciaMerklePathElement>,
     pub children: Vec<TreeNode>,
     pub rlp_receipt: Option<Vec<u8>>,
-    pub event_parts: Option<EventParts>,
+    pub event_parts: Option<Vec<EventParts>>,
     pub index_level: usize,
     pub num_paths: Vec<usize>,
     pub node_type: NodeType,
@@ -337,16 +337,26 @@ impl TreeNode {
               path_index: usize, node_type: NodeType, full_data: Vec<u8>, hash_offset: usize, hash: H256) {
         if level == self.index_level + 1 {
             if let Some(existing_child) = self.children.iter_mut().find(|child| {
-                child.index_level == level && child.full_data.clone() == full_data.clone() && node_type != NodeType::LEAF && child.hash == hash
+                child.index_level == level && child.full_data.clone() == full_data.clone() && child.hash == hash
             }) {
-                existing_child.num_paths.push(path_index.clone());
-                existing_child.hash_offset.push(hash_offset.clone());
+                if !existing_child.hash_offset.contains(&hash_offset.clone()) {
+                    existing_child.hash_offset.push(hash_offset.clone());
+                    existing_child.num_paths.push(path_index.clone());
+                }
+
+                if let Some(existing_events) = existing_child.event_parts.as_mut() {
+                        existing_events.push(event_parts.clone().unwrap());
+                }
             } else {
                 let new_node = TreeNode {
                     value,
                     children: Vec::new(),
                     rlp_receipt,
-                    event_parts,
+                    event_parts: if event_parts.is_some(){
+                       Some(vec![event_parts.unwrap()])
+                    }else {
+                        None
+                    },
                     index_level: level,
                     num_paths: vec![path_index],
                     node_type,
@@ -357,7 +367,7 @@ impl TreeNode {
                 self.children.push(new_node);
             }
         } else {
-            if let Some(existing_child) = self.children.iter_mut().find(|child| child.index_level == self.index_level + 1 && child.num_paths.contains(&path_index)) {
+            if let Some(existing_child) = self.children.iter_mut().find(|child| child.index_level == self.index_level + 1) {
                 existing_child.insert(value, level, rlp_receipt, event_parts, path_index, node_type, full_data, hash_offset, hash);
                 return;
             } else {
@@ -365,7 +375,11 @@ impl TreeNode {
                     value,
                     children: Vec::new(),
                     rlp_receipt,
-                    event_parts,
+                    event_parts: if event_parts.is_some(){
+                        Some(vec![event_parts.unwrap()])
+                    }else {
+                        None
+                    },
                     index_level: level,
                     num_paths: vec![path_index],
                     node_type,
@@ -380,7 +394,7 @@ impl TreeNode {
 
     fn print_at_level(&self, indent: String, target_level: usize) {
         if self.index_level == target_level {
-            info!("{:?}, PATH_INDEX: {:?} {:?}", self.hash, self.num_paths, self.hash_offset);
+            info!("Hash: {:?}", self.hash);
         }
         for child in &self.children {
             child.print_at_level(indent.clone(), target_level);
@@ -406,7 +420,11 @@ impl PatriciaTree {
                 value,
                 children: Vec::new(),
                 rlp_receipt,
-                event_parts,
+                event_parts: if event_parts.is_some(){
+                    Some(vec![event_parts.unwrap()])
+                }else {
+                    None
+                },
                 index_level: level,
                 num_paths: vec![path_index],
                 node_type,
@@ -597,10 +615,10 @@ mod tests {
     #[test]
     fn test_tree() -> Result<()> {
         init_logger();
-        let all_paths: Vec<PatriciaMerklePath> = read_paths_from_file("test_data/paths/temp_json.json")?;
+        let all_paths: Vec<PatriciaMerklePath> = read_paths_from_file("test_data/paths/block_headers_12901300-12901399.json")?;
         let result = convert_to_tree(&all_paths)?;
-        for tree in result{
-            tree.print_at_each_level();
+        for tree in result {
+            tree.print_at_each_level()
         }
         Ok(())
     }

@@ -33,6 +33,31 @@ pub(crate) fn eval_lookups<F: Field, P: PackedField<Scalar = F>, const COLS: usi
     yield_constr.constraint_last_row(diff_input_table);
 }
 
+pub(crate) fn eval_lookups_diff<F: Field, P: PackedField<Scalar = F>, const COLS: usize>(
+    vars: StarkEvaluationVars<F, P, COLS>,
+    yield_constr: &mut ConstraintConsumer<P>,
+    col_permuted_input: usize,
+    col_permuted_table: usize,
+    filter_input: usize
+) {
+    let filter = vars.local_values[filter_input];
+    let local_perm_input = vars.local_values[col_permuted_input];
+    let next_perm_table = vars.next_values[col_permuted_table];
+    let next_perm_input = vars.next_values[col_permuted_input];
+
+    // A "vertical" diff between the local and next permuted inputs.
+    let diff_input_prev = next_perm_input - local_perm_input;
+    // A "horizontal" diff between the next permuted input and permuted table value.
+    let diff_input_table = next_perm_input - next_perm_table;
+
+    yield_constr.constraint(filter * diff_input_prev * diff_input_table);
+
+    // This is actually constraining the first row, as per the spec, since `diff_input_table`
+    // is a diff of the next row's values. In the context of `constraint_last_row`, the next
+    // row is the first row.
+    yield_constr.constraint_last_row(filter * diff_input_table);
+}
+
 pub(crate) fn eval_lookups_circuit<
     F: RichField + Extendable<D>,
     const D: usize,
@@ -55,6 +80,38 @@ pub(crate) fn eval_lookups_circuit<
 
     let diff_product = builder.mul_extension(diff_input_prev, diff_input_table);
     yield_constr.constraint(builder, diff_product);
+
+    // This is actually constraining the first row, as per the spec, since `diff_input_table`
+    // is a diff of the next row's values. In the context of `constraint_last_row`, the next
+    // row is the first row.
+    yield_constr.constraint_last_row(builder, diff_input_table);
+}
+
+pub(crate) fn eval_lookups_circuit_diff<
+    F: RichField + Extendable<D>,
+    const D: usize,
+    const COLS: usize,
+>(
+    builder: &mut CircuitBuilder<F, D>,
+    vars: StarkEvaluationTargets<D, COLS>,
+    yield_constr: &mut RecursiveConstraintConsumer<F, D>,
+    col_permuted_input: usize,
+    col_permuted_table: usize,
+    filter_input: usize
+) {
+    let local_perm_input = vars.local_values[col_permuted_input];
+    let next_perm_table = vars.next_values[col_permuted_table];
+    let next_perm_input = vars.next_values[col_permuted_input];
+
+    // A "vertical" diff between the local and next permuted inputs.
+    let diff_input_prev = builder.sub_extension(next_perm_input, local_perm_input);
+    // A "horizontal" diff between the next permuted input and permuted table value.
+    let diff_input_table = builder.sub_extension(next_perm_input, next_perm_table);
+
+    let diff_product = builder.mul_extension(diff_input_prev, diff_input_table);
+    let filter = vars.local_values[filter_input];
+    let filter_product = builder.mul_extension(filter, diff_product);
+    yield_constr.constraint(builder, filter_product);
 
     // This is actually constraining the first row, as per the spec, since `diff_input_table`
     // is a diff of the next row's values. In the context of `constraint_last_row`, the next

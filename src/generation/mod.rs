@@ -153,15 +153,13 @@ fn recursive_log<F: RichField + Extendable<D>, const D: usize>(node: &TreeNode, 
 
 fn proper_log_node<F: RichField + Extendable<D>, const D: usize>(node: &TreeNode, values: &mut Vec<(Vec<u8>, Vec<u8>)>, state: &mut GenerationState<F>, roots: &mut Vec<H256>) {
     if node.node_type == NodeType::LEAF {
-        let event_parts = node.event_parts.clone().unwrap();
-        let sold_token_id = event_parts.sold_token_id;
-        values.push((event_parts.sold_token_volume.clone(), sold_token_id));
-        let sold_token_id_offset = event_parts.sold_token_id_index + node.value.clone().unwrap().prefix.len();
-        let value_offset = event_parts.sold_token_volume_index + node.value.clone().unwrap().prefix.len();
-        let method_offset = event_parts.event_selector_index + node.value.clone().unwrap().prefix.len();
-        let contract_offset = event_parts.pool_address_index + node.value.clone().unwrap().prefix.len();
+        let event_logs = node.event_parts.clone().unwrap();
+        for event_logs in &event_logs {
+            let sold_token_id = event_logs.clone().sold_token_id;
+            values.push((event_logs.sold_token_volume.clone(), sold_token_id));
+        }
         keccak_short_log(state, node.full_data.clone());
-        data_leaf_log(state, node.full_data.clone(), contract_offset, value_offset, method_offset, sold_token_id_offset);
+        data_leaf_log(state, node.full_data.clone(), &event_logs, node.value.clone().unwrap());
     } else if node.node_type == NodeType::NODE {
         keccak_short_log(state, node.full_data.clone());
         data_node_log(state, node.full_data.clone(), node.hash_offset.clone());
