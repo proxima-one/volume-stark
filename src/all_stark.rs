@@ -115,7 +115,7 @@ pub(crate) fn all_cross_table_lookups<F: Field>() -> Vec<CrossTableLookup<F>> {
         ctl_last_blockhash_included(),
         ctl_mult_value(),
         ctl_volume_value(),
-        ctl_token_id()
+        ctl_token_id(),
     ]
 }
 
@@ -303,3 +303,5 @@ fn ctl_token_id<F: Field>() -> CrossTableLookup<F> {
 
     CrossTableLookup::new(vec![string_looked], string_looking)
 }
+
+

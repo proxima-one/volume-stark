@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use ::rlp::{RlpStream};
 use ethereum_types::{Bloom, H160, H256, H64, U256};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -10,6 +11,8 @@ use anyhow::Result;
 use http_body_util::BodyExt;
 use itertools::Itertools;
 use log::{error, info};
+use rlp::{decode, DecoderError, Encodable, Rlp};
+use rlp_derive::{RlpDecodable, RlpEncodable};
 use serde_json::Value;
 
 type Bytes = Vec<u8>;
@@ -206,6 +209,95 @@ pub fn read_headers_from_request(objects_arr: &Vec<Value>) -> Result<Vec<Header>
     Ok(headers)
 }
 
+#[derive(Debug)]
+pub struct Log {
+    pub address: H160,
+    pub topics: Vec<H256>,
+    pub data: Vec<u8>,
+}
+
+impl rlp::Decodable for Log {
+    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
+        Ok(Log {
+            address: rlp.val_at(0)?,
+            topics: rlp.list_at(1)?,
+            data: rlp.val_at(2)?,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct ReceiptLog {
+    pub transaction_status: U256,
+    pub used_gas: U256,
+    pub logs_bloom: Bloom,
+    pub logs: Vec<Log>,
+}
+
+
+#[derive(Debug)]
+pub struct Receipt {
+    pub key_transaction: U256,
+    pub receipt_log: ReceiptLog,
+}
+
+impl rlp::Decodable for ReceiptLog {
+    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
+        Ok(ReceiptLog {
+            transaction_status: rlp.val_at(0)?,
+            used_gas: rlp.val_at(1)?,
+            logs_bloom: rlp.val_at(2)?,
+            logs: rlp.list_at(3)?,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct LogIndexes {
+    pub logs_container_idx: (usize, usize),
+    pub logs_idx: Vec<(usize, usize)>,
+}
+
+impl Receipt {
+    pub fn split_rlp(data: &[u8]) -> Result<(LogIndexes), DecoderError> {
+        let rlp = Rlp::new(data);
+        let rlp_payload = rlp.payload_info().unwrap();
+        let receipt_rlp = rlp.at(1)?;
+        let receipt_data = receipt_rlp.data()?;
+        let all_len_rlp = rlp_payload.header_len + rlp_payload.value_len;
+        let mut start_index: usize = 0;
+        if receipt_data[0] != 248 && receipt_data[0] != 249 {
+            start_index += 1;
+        }
+        let receipt_rlp = Rlp::new(&receipt_data[start_index..]);
+        let logs_rlp = receipt_rlp.at(3)?;
+
+        let container_logs = logs_rlp.payload_info().expect("Getting payload error");
+        let start_of_logs = all_len_rlp - container_logs.value_len - container_logs.header_len;
+        let item_count = logs_rlp.item_count()?;
+        let mut position_logs: Vec<(usize, usize)> = vec![];
+        let start_index_first_log = start_of_logs + container_logs.header_len;
+        let rlp_log = logs_rlp.at(0)?;
+        let payload_log = rlp_log.payload_info()?;
+        let end_first_log = start_index_first_log + payload_log.header_len + payload_log.value_len - 1;
+        position_logs.push((start_index_first_log, end_first_log));
+
+        let mut start_index = end_first_log + 1;
+        for i in 1..item_count {
+            let rlp_log = logs_rlp.at(i)?;
+            let payload_log = rlp_log.payload_info()?;
+            let end_index = start_index + payload_log.header_len + payload_log.value_len - 1;
+            position_logs.push((start_index, end_index));
+
+            start_index = end_index + 1;
+        }
+        let end_of_logs = position_logs.last().unwrap().1;
+        let indexes = LogIndexes { logs_container_idx: (start_of_logs, end_of_logs), logs_idx: position_logs };
+
+        Ok(indexes)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,4 +317,6 @@ mod tests {
         info!("Headers: {:?}, hash: {:?}", all_headers[0].hash, all_headers[0].hash());
         Ok(())
     }
+
+
 }

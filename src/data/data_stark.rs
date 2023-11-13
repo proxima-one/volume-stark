@@ -12,10 +12,12 @@ use plonky2::iop::ext_target::ExtensionTarget;
 use plonky2::timed;
 use plonky2::util::timing::TimingTree;
 use plonky2::util::transpose;
+use crate::block_header::{LogIndexes, Receipt};
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
 use crate::cross_table_lookup::Column;
 use crate::data::columns;
 use crate::data::columns::*;
+use crate::data::data_stark::DataType::Leaf;
 use crate::lookup::{eval_lookups, eval_lookups_circuit, eval_lookups_circuit_diff, eval_lookups_diff, permuted_cols};
 use crate::permutation::PermutationPair;
 use crate::search_substring::search_stark::columns::{HAYSTACK_SIZE};
@@ -141,7 +143,6 @@ pub(crate) fn ctl_looking_arithmetic_filter<F: Field>() -> Column<F> {
 
 const RANGE_MAX: usize = 1usize << 8;
 
-const RANGE_MAX_DIFF: usize = 1usize << 5;
 
 #[derive(Clone, Debug, Copy)]
 pub(crate) struct DataItem {
@@ -156,6 +157,8 @@ pub(crate) struct EventLogPart {
     pub(crate) value: DataItem,
     pub(crate) token_id: DataItem,
     pub(crate) method_signature: DataItem,
+    pub(crate) event_rlp_index: usize,
+    pub(crate) bought_token_volume_index: usize,
 }
 
 
@@ -190,6 +193,7 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         let n_rows = cols[0].len();
         debug_assert!(cols.iter().all(|col| col.len() == n_rows));
 
+
         for i in 0..RANGE_MAX {
             cols[RANGE_COUNTER][i] = F::from_canonical_usize(i);
         }
@@ -197,23 +201,17 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         for i in RANGE_MAX..n_rows {
             cols[RANGE_COUNTER][i] = F::from_canonical_usize(RANGE_MAX - 1);
         }
-
-        for i in 0..RANGE_MAX_DIFF - 1 {
-            cols[RANGE_COUNTER_OFFSET_DIFF][i] = F::from_canonical_usize(i + 1);
-        }
-        for i in RANGE_MAX_DIFF - 1..n_rows {
-            cols[RANGE_COUNTER_OFFSET_DIFF][i] = F::from_canonical_usize(RANGE_MAX_DIFF - 1);
-        }
         for (c, rc_c) in BLOCK_BYTES.zip(RC_COLS.step_by(2)) {
             let (col_perm, table_perm) = permuted_cols(&cols[c], &cols[RANGE_COUNTER]);
             cols[rc_c].copy_from_slice(&col_perm);
             cols[rc_c + 1].copy_from_slice(&table_perm);
         }
 
-
-        let (col_perm, table_perm) = permuted_cols(&cols[START_OFFSET_DIFF], &cols[RANGE_COUNTER_OFFSET_DIFF]);
-        cols[RC_COLS_OFFSET_DIFF.start].copy_from_slice(&col_perm);
-        cols[RC_COLS_OFFSET_DIFF.start + 1].copy_from_slice(&table_perm);
+        // let (col_perm, table_perm) = permuted_cols(&cols[START_OF_EVENT], &cols[END_OF_EVENT]);
+        // cols[EVENT_INDEX.start].copy_from_slice(&col_perm);
+        // cols[EVENT_INDEX.start + 1].copy_from_slice(&table_perm);
+        // info!("col_perm : {:?}",  cols[EVENT_INDEX.start]);
+        // info!("table_perm : {:?}",  cols[EVENT_INDEX.start + 1]);
     }
 
     pub(crate) fn generate_trace(
@@ -303,14 +301,21 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         let mut already_absorbed_bytes = 0;
         let mut index_block = 0;
         let mut previous_block: Option<DataColumnsView<F>> = None;
-        let mut diff_offset_contract: usize = 0;
-        let mut diff_offset_method: usize = 0;
-        let mut diff_offset_token: usize = 0;
-        let mut diff_offset_value: usize = 0;
-        let mut index_contract: usize = 0;
-        let mut index_method: usize = 0;
-        let mut index_token: usize = 0;
-        let mut index_value: usize = 0;
+        let mut log_idxs = if op.data_type == DataType::Leaf {
+            let rlp_idx = Receipt::split_rlp(&op.input).expect("RLP not splitted correctly");
+            info!("INDEXES : {:?}", rlp_idx);
+            let (start_list_idx, end_list_idx) = rlp_idx.logs_container_idx;
+            let mut offset_header = 0;
+            match op.input[start_list_idx] {
+                248 => offset_header += 2,
+                249 => offset_header += 3,
+                _ => offset_header += 0,
+            }
+            info!("{:?}", end_list_idx);
+            Some(LogIndexes { logs_container_idx: (start_list_idx + offset_header, end_list_idx), logs_idx: rlp_idx.logs_idx })
+        } else {
+            None
+        };
         for block in input_blocks.by_ref() {
             let mut block_rows = self.generate_full_input_row(
                 &op,
@@ -318,14 +323,7 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
                 block.try_into().unwrap(),
                 index,
                 calculation_id,
-                &mut diff_offset_contract,
-                &mut diff_offset_method,
-                &mut diff_offset_token,
-                &mut diff_offset_value,
-                &mut index_contract,
-                &mut index_method,
-                &mut index_token,
-                &mut index_value,
+                log_idxs.as_mut(),
             );
             let mut temp_row: DataColumnsView<F> = Default::default();
             if index_block == 0 {
@@ -352,14 +350,7 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
             input_blocks.remainder(),
             index,
             calculation_id,
-            &mut diff_offset_contract,
-            &mut diff_offset_method,
-            &mut diff_offset_token,
-            &mut diff_offset_value,
-            &mut index_contract,
-            &mut index_method,
-            &mut index_token,
-            &mut index_value,
+            log_idxs.as_mut(),
         );
         for mut row in final_rows.clone() {
             if let Some(prev_block) = &previous_block {
@@ -371,6 +362,7 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
             }
             rows.push(row.into());
         }
+
         rows
     }
 
@@ -381,23 +373,14 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         block: [u8; KECCAK_RATE_BYTES],
         index: &mut u64,
         calculation_id: &mut u64,
-        diff_offset_contract: &mut usize,
-        diff_offset_method: &mut usize,
-        diff_offset_token: &mut usize,
-        diff_offset_value: &mut usize,
-        index_contract: &mut usize,
-        index_method: &mut usize,
-        index_token: &mut usize,
-        index_value: &mut usize,
+        log_idxs: Option<&mut LogIndexes>,
     ) -> Vec<DataColumnsView<F>> {
         let mut row = DataColumnsView {
             is_full_input_block: F::ONE,
             ..Default::default()
         };
         row.block_bytes = block.map(F::from_canonical_u8);
-        Self::generate_common_fields(&mut row, op, already_absorbed_bytes, index, calculation_id, diff_offset_contract, diff_offset_method, diff_offset_token, diff_offset_value, index_contract, index_method,
-                                     index_token,
-                                     index_value)
+        Self::generate_common_fields(&mut row, op, already_absorbed_bytes, index, calculation_id, log_idxs)
     }
 
 
@@ -408,14 +391,7 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         final_inputs: &[u8],
         index: &mut u64,
         calculation_id: &mut u64,
-        diff_offset_contract: &mut usize,
-        diff_offset_method: &mut usize,
-        diff_offset_token: &mut usize,
-        diff_offset_value: &mut usize,
-        index_contract: &mut usize,
-        index_method: &mut usize,
-        index_token: &mut usize,
-        index_value: &mut usize,
+        log_idxs: Option<&mut LogIndexes>,
     ) -> Vec<DataColumnsView<F>> {
         assert_eq!(already_absorbed_bytes + final_inputs.len(), op.input.len());
 
@@ -436,9 +412,7 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
 
 
         row.last_block = F::from_bool(true);
-        Self::generate_common_fields(&mut row, op, already_absorbed_bytes, index, calculation_id, diff_offset_contract, diff_offset_method, diff_offset_token, diff_offset_value, index_contract, index_method,
-                                     index_token,
-                                     index_value)
+        Self::generate_common_fields(&mut row, op, already_absorbed_bytes, index, calculation_id, log_idxs)
     }
 
     fn generate_data_fields(row: &mut DataColumnsView<F>,
@@ -449,6 +423,18 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         row.shift_num = F::from_canonical_usize(HAYSTACK_SIZE - item.offset_in_block);
     }
 
+    fn generate_log_fields(mut log_idxs: Option<&mut &mut LogIndexes>, row: &mut DataColumnsView<F>,
+                            ) {
+        match log_idxs {
+            None => {}
+            Some(mut logs) => {
+                row.is_event_log = F::from_bool(true);
+                row.start_of_event = F::from_canonical_usize(logs.logs_idx[0].0);
+                row.end_of_event = F::from_canonical_usize(logs.logs_idx[0].0);
+            }
+        }
+    }
+
     /// Generate fields that are common to both full-input-block rows and final-block rows.
     /// Also updates the sponge state with a single absorption.
     fn generate_common_fields(
@@ -457,87 +443,83 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         already_absorbed_bytes: usize,
         index_op: &mut u64,
         calculation_id: &mut u64,
-        diff_offset_contract: &mut usize,
-        diff_offset_method: &mut usize,
-        diff_offset_token: &mut usize,
-        diff_offset_value: &mut usize,
-        index_contract: &mut usize,
-        index_method: &mut usize,
-        index_token: &mut usize,
-        index_value: &mut usize,
+        mut log_idxs: Option<&mut LogIndexes>,
     ) -> Vec<DataColumnsView<F>> {
         let mut rows: Vec<DataColumnsView<F>> = vec![];
         row.len = F::from_canonical_usize(op.input.len());
         row.already_absorbed_bytes = F::from_canonical_usize(already_absorbed_bytes);
-        row.is_leaf = F::from_bool(op.data_type == DataType::Leaf);
+        row.is_leaf = F::from_bool(op.data_type == Leaf);
         row.is_node = F::from_bool(op.data_type == DataType::Node);
         row.is_receipts_root = F::from_bool(op.data_type == DataType::ReceiptsRoot);
         row.is_block_hash = F::from_bool(op.data_type == DataType::BlockHash);
         let mut row_clone = row.clone();
         match op.event_logs.clone() {
             Some(item) => {
+                if already_absorbed_bytes == 0 {
+                    match log_idxs.as_mut() {
+                        None => {}
+                        Some(indexes) => {
+                            row_clone = row.clone();
+                            row_clone.start_of_event = F::from_canonical_usize(indexes.logs_container_idx.1);
+                            row_clone.end_of_event = F::from_canonical_usize(indexes.logs_container_idx.0);
+                            row_clone.is_event_log = F::from_bool(true);
+                            rows.push(row_clone);
+                        }
+                    }
+                }
                 for event in item {
                     if (event.contract.offset + KECCAK_DIGEST_BYTES >= already_absorbed_bytes) && (event.contract.offset + KECCAK_DIGEST_BYTES < already_absorbed_bytes + KECCAK_RATE_BYTES) {
                         row_clone = row.clone();
                         row_clone.contract_address_found = F::from_bool(true);
-                        if *index_contract == 0usize {
-                            let diff = event.contract.offset.clone() / 200;
-                            row_clone.offset_diff = F::from_canonical_u8(diff as u8);
-                        } else {
-                            let diff = (event.contract.offset.clone() - *diff_offset_contract) / 200;
-                            row_clone.offset_diff = F::from_canonical_usize(diff);
-                        }
-                        *diff_offset_contract = event.contract.offset;
-                        *index_contract += 1;
                         Self::generate_data_fields(&mut row_clone, &event.contract);
-
+                        match log_idxs.as_mut() {
+                            None => {}
+                            Some(mut logs) => {
+                                let start = logs.logs_idx[0].0;
+                                let end = logs.logs_idx[0].1;
+                                if end + KECCAK_DIGEST_BYTES >= already_absorbed_bytes && end + KECCAK_DIGEST_BYTES < already_absorbed_bytes + KECCAK_RATE_BYTES {
+                                    row_clone.is_event_log = F::from_bool(true);
+                                    row_clone.start_of_event = F::from_canonical_usize(start);
+                                    row_clone.end_of_event = F::from_canonical_usize(end + 1);
+                                    logs.logs_idx.remove(0);
+                                } else {
+                                    row_clone.is_event_log = F::from_bool(true);
+                                    row_clone.start_of_event = F::from_canonical_usize(start);
+                                    row_clone.end_of_event = F::from_canonical_usize(start);
+                                }
+                            }
+                        }
                         rows.push(row_clone.clone());
                     }
                     if (event.method_signature.offset + KECCAK_DIGEST_BYTES >= already_absorbed_bytes) && (event.method_signature.offset + KECCAK_DIGEST_BYTES < already_absorbed_bytes + KECCAK_RATE_BYTES) {
                         row_clone = row.clone();
                         row_clone.method_signature_found = F::from_bool(true);
-                        if *index_method == 0usize {
-                            let diff = event.method_signature.offset.clone() / 200;
-                            row_clone.offset_diff = F::from_canonical_u8(diff as u8);
-                        } else {
-                            let diff = (event.method_signature.offset.clone() - *diff_offset_method) / 200;
-                            row_clone.offset_diff = F::from_canonical_usize(diff);
-                        }
-                        *diff_offset_method = event.method_signature.offset;
-                        *index_method += 1;
                         Self::generate_data_fields(&mut row_clone, &event.method_signature);
+                        Self::generate_log_fields(log_idxs.as_mut(), &mut row_clone);
                         rows.push(row_clone.clone());
                     }
                     if (event.token_id.offset + KECCAK_DIGEST_BYTES >= already_absorbed_bytes) && (event.token_id.offset + KECCAK_DIGEST_BYTES < already_absorbed_bytes + KECCAK_RATE_BYTES) {
                         row_clone = row.clone();
                         row_clone.sold_token_id_found = F::from_bool(true);
-                        if *index_token == 0usize {
-                            let diff = event.token_id.offset.clone() / 200;
-                            row_clone.offset_diff = F::from_canonical_u8(diff as u8);
-                        } else {
-                            let diff = (event.token_id.offset.clone() - *diff_offset_token) / 200;
-                            row_clone.offset_diff = F::from_canonical_usize(diff);
-                        }
-                        *diff_offset_token = event.token_id.offset;
-                        *index_token += 1;
                         Self::generate_data_fields(&mut row_clone, &event.token_id);
                         row_clone.calculation_id = F::from_canonical_u64(*calculation_id);
+                        Self::generate_log_fields(log_idxs.as_mut(), &mut row_clone);
                         rows.push(row_clone.clone());
                     }
                     if (event.value.offset + KECCAK_DIGEST_BYTES >= already_absorbed_bytes) && (event.value.offset + KECCAK_DIGEST_BYTES < already_absorbed_bytes + KECCAK_RATE_BYTES) {
                         row_clone = row.clone();
-                        if *index_value == 0usize {
-                            let diff = event.value.offset.clone() / 200;
-                            row_clone.offset_diff = F::from_canonical_u8(diff as u8);
-                        } else {
-                            let diff = (event.value.offset.clone() - *diff_offset_value) / 200;
-                            row_clone.offset_diff = F::from_canonical_usize(diff);
-                        }
-                        *diff_offset_value = event.value.offset;
-                        *index_value += 1;
                         Self::generate_data_fields(&mut row_clone, &event.value);
                         row_clone.calculation_id = F::from_canonical_u64(*calculation_id);
                         row_clone.transfer_value_found = F::from_bool(true);
+                        match log_idxs.as_mut() {
+                            None => {}
+                            Some(mut logs) => {
+                                row_clone.is_event_log = F::from_bool(true);
+                                row_clone.start_of_event = F::from_canonical_usize(event.event_rlp_index);
+                                row_clone.end_of_event = F::from_canonical_usize(event.bought_token_volume_index);
+                                logs.logs_idx.remove(0);
+                            }
+                        }
                         *calculation_id += 1;
                         rows.push(row_clone.clone());
                     }
@@ -597,7 +579,32 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
             None => {}
         }
         if rows.is_empty() {
-            rows.push(row.clone());
+            let mut row_clone = row.clone();
+            match log_idxs.as_mut() {
+                None => {}
+                Some(mut logs) => {
+                    let mut index = 0;
+                    let mut not_found = true;
+                    for (start_idx, end_idx) in &logs.logs_idx {
+                        if end_idx + KECCAK_DIGEST_BYTES >= already_absorbed_bytes && end_idx + KECCAK_DIGEST_BYTES < already_absorbed_bytes + KECCAK_RATE_BYTES {
+                            row_clone.start_of_event = F::from_canonical_usize(*start_idx);
+                            row_clone.end_of_event = F::from_canonical_usize(end_idx + 1);
+                            row_clone.is_event_log = F::from_bool(true);
+                            logs.logs_idx.remove(index);
+                            not_found = false;
+                            break;
+                        }
+                        index += 1;
+                    }
+                    if not_found {
+                        Self::generate_log_fields(log_idxs.as_mut(), &mut row_clone);
+                    }
+                }
+            }
+            if row_clone.last_block == F::from_bool(true) {
+                row_clone.is_event_log = F::from_bool(false);
+            }
+            rows.push(row_clone);
         } else if rows.len() > 1 {
             rows[0].id = F::from_canonical_u64(*index_op);
             rows[0].is_shadow = F::from_bool(false);
@@ -615,12 +622,33 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
             if rows[0].last_block == F::from_bool(true) {
                 rows[0].last_block = F::from_bool(false);
                 if let Some(row) = rows.last_mut() {
-                    row.last_block = F::from_bool(true);
+                    match log_idxs.as_mut() {
+                        None => { row.last_block = F::from_bool(true); }
+                        Some(indexes) => {
+                            let mut temp_row = DataColumnsView::default();
+                            temp_row.already_absorbed_bytes = row.already_absorbed_bytes;
+                            temp_row.last_block = F::from_bool(true);
+                            temp_row.block_bytes = row.block_bytes;
+                            temp_row.is_shadow = F::from_bool(true);
+                            temp_row.prefix_bytes = row.prefix_bytes;
+                            temp_row.start_of_event = F::from_canonical_usize(indexes.logs_container_idx.1 + 1);
+                            temp_row.end_of_event = F::from_canonical_usize(indexes.logs_container_idx.0);
+                            rows.push(temp_row);
+                        }
+                    }
                 }
             }
         } else {
-            rows[0].id = F::from_canonical_u64(*index_op);
-            *index_op += 1;
+            if rows[0].last_block == F::from_bool(true) {
+                rows[0].is_event_log = F::from_bool(false);
+            }
+            if rows[0].is_event_log != F::from_bool(true) {
+                rows[0].id = F::from_canonical_u64(*index_op);
+                *index_op += 1;
+            }
+        }
+        if op.data_type == Leaf {
+            info!("ROWS : {:?}", rows);
         }
         rows
     }
@@ -646,18 +674,10 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
         for col in RC_COLS.step_by(2) {
             eval_lookups(vars, yield_constr, col, col + 1);
         }
-
-
-        for col in RC_COLS_OFFSET_DIFF.step_by(2) {
-            eval_lookups_diff(vars, yield_constr, col, col + 1, CONTRACT_ADDRESS_FOUND);
-            eval_lookups_diff(vars, yield_constr, col, col + 1, TRANSFER_VALUE_FOUND);
-            eval_lookups_diff(vars, yield_constr, col, col + 1, METHOD_SIGNATURE_FOUND);
-            eval_lookups_diff(vars, yield_constr, col, col + 1, SOLD_TOKEN_ID_FOUND);
-        }
-
-
         let local_values: &DataColumnsView<P> = vars.local_values.borrow();
         let next_values: &DataColumnsView<P> = vars.next_values.borrow();
+        yield_constr.constraint(local_values.is_event_log * (next_values.start_of_event - local_values.end_of_event));
+
 
         let rc1 = local_values.range_counter;
         let rc2 = next_values.range_counter;
@@ -667,13 +687,6 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
         let range_max = P::Scalar::from_canonical_u64((RANGE_MAX - 1) as u64);
         yield_constr.constraint_last_row(rc1 - range_max);
 
-        let rc1 = local_values.range_counter_offset_diff;
-        let rc2 = next_values.range_counter_offset_diff;
-        yield_constr.constraint_first_row(rc1 * rc1 - P::ONES);
-        let incr = rc2 - rc1;
-        yield_constr.constraint_transition(incr * incr - incr);
-        let range_max = P::Scalar::from_canonical_u64((RANGE_MAX_DIFF - 1) as u64);
-        yield_constr.constraint_last_row(rc1 - range_max);
 
         let method_signature: [u8; 32] = [139, 62, 150, 242, 184, 137, 250, 119, 28, 83, 201, 129, 180, 13, 175, 0, 95, 99, 246, 55, 241, 134, 159, 112, 112, 82, 209, 90, 61, 217, 113, 64];
         let converted_method_signature = method_signature.map(|byte| P::from(FE::from_canonical_u8(byte)));
@@ -707,7 +720,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
                 * (local_values.already_absorbed_bytes + P::from(FE::from_canonical_u64(136))
                 - next_values.already_absorbed_bytes),
         );
-        //
+
         yield_constr.constraint_transition(
             next_values.is_shadow
                 * (local_values.already_absorbed_bytes
@@ -720,7 +733,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
         yield_constr.constraint_transition(
             (P::ONES - next_values.is_shadow) * is_dummy * (next_values.is_full_input_block + next_is_final_block),
         );
-        //
+
         // // //Ensure that if we have more than 2 objects of 32 length in one block, is_shadow will be 1
         // // // and next row has the same prefix, block_bytes as previous
         let is_shadow = next_values.is_shadow;
@@ -759,21 +772,21 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
         vars: StarkEvaluationTargets<D, { Self::COLUMNS }>,
         yield_constr: &mut RecursiveConstraintConsumer<F, D>,
     ) {
-
         let one = builder.one_extension();
         for col in RC_COLS.step_by(2) {
             eval_lookups_circuit(builder, vars, yield_constr, col, col + 1);
         }
 
-        for col in RC_COLS_OFFSET_DIFF.step_by(2) {
-            eval_lookups_circuit_diff(builder, vars, yield_constr, col, col + 1, CONTRACT_ADDRESS_FOUND);
-            eval_lookups_circuit_diff(builder, vars, yield_constr, col, col + 1, TRANSFER_VALUE_FOUND);
-            eval_lookups_circuit_diff(builder, vars, yield_constr, col, col + 1, METHOD_SIGNATURE_FOUND);
-            eval_lookups_circuit_diff(builder, vars, yield_constr, col, col + 1, SOLD_TOKEN_ID_FOUND);
-        }
-
         let local_values: &DataColumnsView<ExtensionTarget<D>> = vars.local_values.borrow();
         let next_values: &DataColumnsView<ExtensionTarget<D>> = vars.next_values.borrow();
+
+        let constraint = {
+            let filter = local_values.is_event_log;
+            let sub = builder.sub_extension(next_values.start_of_event, local_values.end_of_event);
+            builder.mul_extension(filter, sub)
+        };
+
+        yield_constr.constraint(builder, constraint);
 
         let rc1 = local_values.range_counter;
         let rc2 = next_values.range_counter;
@@ -786,17 +799,6 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
         let t = builder.sub_extension(rc1, range_max);
         yield_constr.constraint_last_row(builder, t);
 
-        let rc1 = local_values.range_counter_offset_diff;
-        let rc2 = next_values.range_counter_offset_diff;
-        let a = builder.mul_sub_extension(rc1, rc1, one);
-        yield_constr.constraint_first_row(builder, a);
-        let incr = builder.sub_extension(rc2, rc1);
-        let t = builder.mul_sub_extension(incr, incr, incr);
-        yield_constr.constraint_transition(builder, t);
-        let range_max =
-            builder.constant_extension(F::Extension::from_canonical_usize(RANGE_MAX_DIFF - 1));
-        let t = builder.sub_extension(rc1, range_max);
-        yield_constr.constraint_last_row(builder, t);
 
         let method_signature: [u8; 32] = [139, 62, 150, 242, 184, 137, 250, 119, 28, 83, 201, 129, 180, 13, 175, 0, 95, 99, 246, 55, 241, 134, 159, 112, 112, 82, 209, 90, 61, 217, 113, 64];
         let converted_method_signature = method_signature.map(|byte| F::Extension::from_canonical_u8(byte));
@@ -944,15 +946,11 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
                 RANGE_COUNTER,
             ));
         }
-
-        const START_DIFF: usize = START_OFFSET_DIFF;
-        for (c, c_perm) in (START_DIFF..START_DIFF).zip_eq(RC_COLS_OFFSET_DIFF.step_by(2)) {
-            pairs.push(PermutationPair::singletons(c, c_perm));
-            pairs.push(PermutationPair::singletons(
-                c_perm + 1,
-                RANGE_COUNTER_OFFSET_DIFF,
-            ));
-        }
+        // pairs.push(PermutationPair::singletons(START_OF_EVENT, EVENT_INDEX.start));
+        // pairs.push(PermutationPair::singletons(
+        //     EVENT_INDEX.start + 1,
+        //     END_OF_EVENT,
+        // ));
         pairs
     }
 }

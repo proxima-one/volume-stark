@@ -305,10 +305,11 @@ pub(crate) fn data_leaf_log<F: Field>(
 ) {
     let mut event_parts = vec![];
     for event in event_logs{
-        let sold_token_id_offset = event.sold_token_id_index + pmt_element.clone().prefix.len();
-        let value_offset = event.sold_token_volume_index + pmt_element.clone().prefix.len();
-        let method_offset = event.event_selector_index + pmt_element.clone().prefix.len();
-        let contract_offset = event.pool_address_index + pmt_element.clone().prefix.len();
+        let header_prefix = pmt_element.clone().prefix.len();
+        let sold_token_id_offset = event.sold_token_id_index + header_prefix;
+        let value_offset = event.sold_token_volume_index + header_prefix;
+        let method_offset = event.event_selector_index + header_prefix;
+        let contract_offset = event.pool_address_index + header_prefix;
         let contract_data: [u8; KECCAK_DIGEST_BYTES] = input[contract_offset..contract_offset + KECCAK_DIGEST_BYTES].try_into().unwrap();
         let value_data: [u8; KECCAK_DIGEST_BYTES] = input[value_offset..value_offset + KECCAK_DIGEST_BYTES].try_into().unwrap();
         let method_data: [u8; KECCAK_DIGEST_BYTES] = input[method_offset..method_offset + KECCAK_DIGEST_BYTES].try_into().unwrap();
@@ -334,6 +335,8 @@ pub(crate) fn data_leaf_log<F: Field>(
                         item: method_data,
                         offset_in_block: (method_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES,
                     },
+            event_rlp_index: event.event_rlp_index + header_prefix,
+            bought_token_volume_index:  event.bought_token_volume_index + KECCAK_DIGEST_BYTES + header_prefix,
         })
     }
     event_parts.sort_by(|a, b| a.contract.offset.cmp(&b.contract.offset));

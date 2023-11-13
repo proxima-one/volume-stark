@@ -70,11 +70,14 @@ pub(crate) struct DataColumnsView<T: Copy> {
 
     pub rc_cols : [T; 2 * KECCAK_RATE_BYTES],
 
-    pub offset_diff: T,
+    pub start_of_event: T,
 
-    pub range_counter_offset_diff: T,
+    pub end_of_event: T,
 
-    pub rc_cols_offset_diff: [T; 2]
+    // pub event_index: [T; 2],
+
+    pub is_event_log: T,
+
 }
 
 
@@ -82,18 +85,15 @@ pub(crate) struct DataColumnsView<T: Copy> {
 // `u8` is guaranteed to have a `size_of` of 1.
 pub const NUM_DATA_COLUMNS: usize = size_of::<DataColumnsView<u8>>();
 pub const START_BYTES_COLS: usize = 41;
-pub const TRANSFER_VALUE_FOUND: usize = 179;
-pub const CONTRACT_ADDRESS_FOUND: usize = 177;
-pub const METHOD_SIGNATURE_FOUND: usize = 178;
-pub const SOLD_TOKEN_ID_FOUND: usize = 183;
 
 pub const RANGE_COUNTER: usize = 223;
-pub const START_OFFSET_DIFF: usize = 496;
-pub const RANGE_COUNTER_OFFSET_DIFF: usize = 497;
+
+// pub const START_OF_EVENT: usize = 495;
+// pub const END_OF_EVENT: usize = 496;
+// pub const EVENT_INDEX: Range<usize> = END_OF_EVENT + 1 .. END_OF_EVENT + 1 + 2;
 
 pub const BLOCK_BYTES: Range<usize> = START_BYTES_COLS..START_BYTES_COLS + KECCAK_RATE_BYTES;
 pub const RC_COLS: Range<usize> = RANGE_COUNTER + 1..RANGE_COUNTER + 1 + 2 * KECCAK_RATE_BYTES;
-pub const RC_COLS_OFFSET_DIFF: Range<usize> = RANGE_COUNTER_OFFSET_DIFF + 1 .. RANGE_COUNTER + 1 + 2;
 
 
 impl<T: Copy> From<[T; NUM_DATA_COLUMNS]> for DataColumnsView<T> {

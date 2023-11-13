@@ -106,10 +106,12 @@ pub struct EventParts {
     pub event_selector: Vec<u8>,
     pub sold_token_volume: Vec<u8>,
     pub pool_address_index: usize,
+    pub event_rlp_index: usize,
     pub event_selector_index: usize,
     pub sold_token_volume_index: usize,
     pub sold_token_id: Vec<u8>,
     pub sold_token_id_index: usize,
+    pub bought_token_volume_index: usize,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -156,10 +158,12 @@ impl PatriciaMerklePath {
                 event_selector: dummy.clone(),
                 sold_token_volume: dummy.clone(),
                 pool_address_index: 0,
+                event_rlp_index: 0,
                 event_selector_index: 0,
                 sold_token_volume_index: 0,
                 sold_token_id: vec![],
                 sold_token_id_index: 0,
+                bought_token_volume_index: 0,
             },
         }
     }
@@ -208,10 +212,12 @@ impl PatriciaMerklePath {
                 event_selector: str_to_u8_array(&path_str.event_parts.event_selector)?,
                 sold_token_volume: str_to_u8_array(&path_str.event_parts.sold_token_volume)?,
                 pool_address_index: path_str.event_parts.pool_address_index,
+                event_rlp_index: path_str.event_parts.event_rlp_index,
                 event_selector_index: path_str.event_parts.event_selector_index,
                 sold_token_volume_index: path_str.event_parts.sold_token_volume_index,
                 sold_token_id: str_to_u8_array(&path_str.event_parts.pool_address)?,
                 sold_token_id_index: path_str.event_parts.sold_token_id_index,
+                bought_token_volume_index: path_str.event_parts.bought_token_volume_index,
             },
         };
         Ok(path)
@@ -248,10 +254,12 @@ pub fn read_paths_from_file(file_name: &str) -> Result<Vec<PatriciaMerklePath>, 
                 event_selector: str_to_u8_array(&i.event_parts.event_selector)?,
                 sold_token_volume: str_to_u8_array(&i.event_parts.sold_token_volume)?,
                 pool_address_index: i.event_parts.pool_address_index,
+                event_rlp_index: i.event_parts.event_rlp_index,
                 event_selector_index: i.event_parts.event_selector_index,
                 sold_token_volume_index: i.event_parts.sold_token_volume_index,
                 sold_token_id: str_to_u8_array(&i.event_parts.sold_token_id)?,
                 sold_token_id_index: i.event_parts.sold_token_id_index,
+                bought_token_volume_index: i.event_parts.bought_token_volume_index,
             },
         });
         merkle_path.clear();
@@ -281,10 +289,12 @@ pub fn read_paths_from_json_request(objects_arr: &Vec<Value>) -> Result<Vec<Patr
                 event_selector: str_to_u8_array(&paths_str.event_parts.event_selector)?,
                 sold_token_volume: str_to_u8_array(&paths_str.event_parts.sold_token_volume)?,
                 pool_address_index: paths_str.event_parts.pool_address_index,
+                event_rlp_index: paths_str.event_parts.event_rlp_index,
                 event_selector_index: paths_str.event_parts.event_selector_index,
                 sold_token_volume_index: paths_str.event_parts.sold_token_volume_index,
                 sold_token_id: str_to_u8_array(&paths_str.event_parts.sold_token_id)?,
                 sold_token_id_index: paths_str.event_parts.sold_token_id_index,
+                bought_token_volume_index: paths_str.event_parts.bought_token_volume_index,
             },
         });
         merkle_path.clear();
