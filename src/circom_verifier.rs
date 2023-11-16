@@ -1,7 +1,7 @@
 use std::fmt::Write;
 
 use anyhow::Result;
-use log::Level;
+use itertools::Itertools;
 use plonky2::field::extension::{Extendable, FieldExtension};
 use plonky2::field::types::Field;
 use plonky2::gates::noop::NoopGate;
@@ -26,300 +26,84 @@ pub fn encode_hex(bytes: &[u8]) -> String {
     }
     s
 }
-/*
-fn recursive_proof<
-    F: RichField + Extendable<D>,
-    C: GenericConfig<D, F = F>,
-    InnerC: GenericConfig<D, F = F>,
-    const D: usize,
->(
-    inner_proof: ProofWithPublicInputs<F, InnerC, D>,
-    inner_vd: VerifierOnlyCircuitData<InnerC, D>,
-    inner_cd: CommonCircuitData<F, D>,
-    config: &CircuitConfig,
-    min_degree_bits: Option<usize>,
-    print_gate_counts: bool,
-    print_timing: bool,
-) -> Result<(
-    ProofWithPublicInputs<F, C, D>,
-    VerifierOnlyCircuitData<C, D>,
-    CommonCircuitData<F, D>,
-)>
-where
-    InnerC::Hasher: AlgebraicHasher<F>,
-    [(); C::Hasher::HASH_SIZE]:,
-{
-    let mut builder = CircuitBuilder::<F, D>::new(config.clone());
-    let mut pw = PartialWitness::new();
-    let pt = builder.add_virtual_proof_with_pis(&inner_cd);
-    pw.set_proof_with_pis_target(&pt, &inner_proof);
-
-    let inner_data = VerifierCircuitTarget {
-        constants_sigmas_cap: builder.add_virtual_cap(inner_cd.config.fri_config.cap_height),
-        circuit_digest: builder.add_virtual_hash(),
-    };
-    pw.set_cap_target(
-        &inner_data.constants_sigmas_cap,
-        &inner_vd.constants_sigmas_cap,
-    );
-    pw.set_hash_target(inner_data.circuit_digest, inner_vd.circuit_digest);
-
-    builder.register_public_inputs(inner_data.circuit_digest.elements.as_slice());
-    for i in 0..builder.config.fri_config.num_cap_elements() {
-        builder.register_public_inputs(&inner_data.constants_sigmas_cap.0[i].elements);
-    }
-    builder.verify_proof::<InnerC>(&pt, &inner_data, &inner_cd);
-
-    if print_gate_counts {
-        builder.print_gate_counts(0);
-    }
-
-    if let Some(min_degree_bits) = min_degree_bits {
-        // We don't want to pad all the way up to 2^min_degree_bits, as the builder will add a
-        // few special gates afterward. So just pad to 2^(min_degree_bits - 1) + 1. Then the
-        // builder will pad to the next power of two, 2^min_degree_bits.
-        let min_gates = (1 << (min_degree_bits - 1)) + 1;
-        for _ in builder.num_gates()..min_gates {
-            builder.add_gate(NoopGate, vec![]);
-        }
-    }
-
-    let data = builder.build::<C>();
-
-    let mut timing = TimingTree::new("prove", Level::Debug);
-    let proof = prove(&data.prover_only, &data.common, pw, &mut timing)?;
-    if print_timing {
-        timing.print();
-    }
-
-    println!("######################### recursive verify #########################");
-    data.verify(proof.clone())?;
-
-    Ok((proof, data.verifier_only, data.common))
-}
-*/
-
-type ProofTuple<F, C, const D: usize> = (
-    ProofWithPublicInputs<F, C, D>,
-    VerifierOnlyCircuitData<C, D>,
-    CommonCircuitData<F, D>,
-);
-
-fn aggregation_proof<
-    F: RichField + Extendable<D>,
-    C: GenericConfig<D, F = F>,
-    InnerC: GenericConfig<D, F = F>,
-    const D: usize,
->(
-    inner1: &ProofTuple<F, InnerC, D>,
-    inner2: Option<ProofTuple<F, InnerC, D>>,
-    config: &CircuitConfig,
-    min_degree_bits: Option<usize>,
-) -> Result<ProofTuple<F, C, D>>
-    where
-        InnerC::Hasher: AlgebraicHasher<F>,
-        [(); C::Hasher::HASH_SIZE]:,
-{
-    let mut builder = CircuitBuilder::<F, D>::new(config.clone());
-    let mut pw = PartialWitness::new();
-
-    {
-        let (inner_proof, inner_vd, inner_cd) = inner1;
-        let pt = builder.add_virtual_proof_with_pis(inner_cd);
-        pw.set_proof_with_pis_target(&pt, inner_proof);
-        builder.register_public_inputs(&*pt.public_inputs);
-
-        let inner_data = VerifierCircuitTarget {
-            constants_sigmas_cap: builder.add_virtual_cap(inner_cd.config.fri_config.cap_height),
-            circuit_digest: builder.add_virtual_hash(),
-        };
-        pw.set_cap_target(
-            &inner_data.constants_sigmas_cap,
-            &inner_vd.constants_sigmas_cap,
-        );
-        pw.set_hash_target(inner_data.circuit_digest, inner_vd.circuit_digest);
-
-        builder.verify_proof::<InnerC>(&pt, &inner_data, inner_cd);
-    }
-
-    if inner2.is_some() {
-        let (inner_proof, inner_vd, inner_cd) = inner2.unwrap();
-        let pt = builder.add_virtual_proof_with_pis(&inner_cd);
-        pw.set_proof_with_pis_target(&pt, &inner_proof);
-        builder.register_public_inputs(&*pt.public_inputs);
-
-        let inner_data = VerifierCircuitTarget {
-            constants_sigmas_cap: builder.add_virtual_cap(inner_cd.config.fri_config.cap_height),
-            circuit_digest: builder.add_virtual_hash(),
-        };
-        pw.set_hash_target(inner_data.circuit_digest, inner_vd.circuit_digest);
-        pw.set_cap_target(
-            &inner_data.constants_sigmas_cap,
-            &inner_vd.constants_sigmas_cap,
-        );
-
-        builder.verify_proof::<InnerC>(&pt, &inner_data, &inner_cd);
-    }
-    builder.print_gate_counts(0);
-
-    if let Some(min_degree_bits) = min_degree_bits {
-        // We don't want to pad all the way up to 2^min_degree_bits, as the builder will
-        // add a few special gates afterward. So just pad to 2^(min_degree_bits
-        // - 1) + 1. Then the builder will pad to the next power of two,
-        // 2^min_degree_bits.
-        let min_gates = (1 << (min_degree_bits - 1)) + 1;
-        for _ in builder.num_gates()..min_gates {
-            builder.add_gate(NoopGate, vec![]);
-        }
-    }
-
-    let data = builder.build::<C>();
-
-    let mut timing = TimingTree::new("prove", Level::Info);
-    let proof = prove(&data.prover_only, &data.common, pw, &mut timing)?;
-    timing.print();
-
-    data.verify(proof.clone())?;
-
-    // test_serialization(&proof, &data.verifier_only, &data.common)?;
-    Ok((proof, data.verifier_only, data.common))
-}
-
-fn fib_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>(input : u32) -> Result<ProofTuple<F, C, D>> {
-    // const D: usize = 2;
-    // type C = PoseidonGoldilocksConfig;
-    // type F = <C as GenericConfig<D>>::F;
-
-    let config = CircuitConfig::standard_recursion_config();
-    let mut builder = CircuitBuilder::<F, D>::new(config);
-
-    // The arithmetic circuit.
-    let initial_a = builder.add_virtual_target();
-    let initial_b = builder.add_virtual_target();
-    let mut prev_target = initial_a;
-    let mut cur_target = initial_b;
-    for _ in 0..99 {
-        let temp = builder.add(prev_target, cur_target);
-        prev_target = cur_target;
-        cur_target = temp;
-    }
-
-    // Public inputs are the two initial values (provided below) and the result (which is generated).
-    builder.register_public_input(initial_a);
-    builder.register_public_input(initial_b);
-    builder.register_public_input(cur_target);
-
-    // Provide initial values.
-    let mut pw = PartialWitness::new();
-    if input == 1 {
-        pw.set_target(initial_a, F::ZERO);
-        pw.set_target(initial_b, F::ONE);
-    }else{
-        pw.set_target(initial_a, F::ONE);
-        pw.set_target(initial_b, F::TWO);
-    }
-
-    let data = builder.build::<C>();
-    let proof = data.prove(pw)?;
-
-    println!(
-        "100th Fibonacci number mod |F| (starting with {}, {}) is: {}",
-        proof.public_inputs[0], proof.public_inputs[1], proof.public_inputs[2]
-    );
-
-    data.verify(proof.clone()).unwrap();
-
-    Ok((proof, data.verifier_only, data.common))
-}
-
-
 #[derive(Serialize)]
 pub struct VerifierConfig {
-    hash_size: usize,
-    field_size: usize,
-    ext_field_size: usize,
-    merkle_height_size: usize,
+    pub hash_size: usize,
+    pub field_size: usize,
+    pub ext_field_size: usize,
+    pub merkle_height_size: usize,
 
-    num_wires_cap: usize,
-    num_plonk_zs_partial_products_cap: usize,
-    num_quotient_polys_cap: usize,
+    pub num_wires_cap: usize,
+    pub num_plonk_zs_partial_products_cap: usize,
+    pub num_quotient_polys_cap: usize,
 
     // openings
-    num_openings_constants: usize,
-    num_openings_plonk_sigmas: usize,
-    num_openings_wires: usize,
-    num_openings_plonk_zs: usize,
-    num_openings_plonk_zs_next: usize,
-    num_openings_partial_products: usize,
-    num_openings_quotient_polys: usize,
+    pub num_openings_constants: usize,
+    pub num_openings_plonk_sigmas: usize,
+    pub num_openings_wires: usize,
+    pub num_openings_plonk_zs: usize,
+    pub num_openings_plonk_zs_next: usize,
+    pub num_openings_partial_products: usize,
+    pub num_openings_quotient_polys: usize,
 
     // fri proof
     // .commit phase
-    num_fri_commit_round: usize,
-    fri_commit_merkle_cap_height: usize,
+    pub num_fri_commit_round: usize,
+    pub fri_commit_merkle_cap_height: usize,
     // .query round
-    num_fri_query_round: usize,
+    pub num_fri_query_round: usize,
     // ..init
-    num_fri_query_init_constants_sigmas_v: usize,
-    num_fri_query_init_constants_sigmas_p: usize,
-    num_fri_query_init_wires_v: usize,
-    num_fri_query_init_wires_p: usize,
-    num_fri_query_init_zs_partial_v: usize,
-    num_fri_query_init_zs_partial_p: usize,
-    num_fri_query_init_quotient_v: usize,
-    num_fri_query_init_quotient_p: usize,
+    pub num_fri_query_init_constants_sigmas_v: usize,
+    pub num_fri_query_init_constants_sigmas_p: usize,
+    pub num_fri_query_init_wires_v: usize,
+    pub num_fri_query_init_wires_p: usize,
+    pub num_fri_query_init_zs_partial_v: usize,
+    pub num_fri_query_init_zs_partial_p: usize,
+    pub num_fri_query_init_quotient_v: usize,
+    pub num_fri_query_init_quotient_p: usize,
     // ..steps
-    num_fri_query_step0_v: usize,
-    num_fri_query_step0_p: usize,
-    num_fri_query_step1_v: usize,
-    num_fri_query_step1_p: usize,
-    num_fri_query_step2_v: usize,
-    num_fri_query_step2_p: usize,
+    pub num_fri_query_step_v: Vec<usize>,
+    pub num_fri_query_step_p: Vec<usize>,
     // .final poly
-    num_fri_final_poly_ext_v: usize,
+    pub num_fri_final_poly_ext_v: usize,
     // public inputs
-    num_public_inputs: usize,
+    pub num_public_inputs: usize,
 }
 
 #[derive(Serialize)]
 pub struct ProofForCircom {
-    wires_cap: Vec<Vec<String>>,
-    plonk_zs_partial_products_cap: Vec<Vec<String>>,
-    quotient_polys_cap: Vec<Vec<String>>,
+    pub wires_cap: Vec<Vec<String>>,
+    pub plonk_zs_partial_products_cap: Vec<Vec<String>>,
+    pub quotient_polys_cap: Vec<Vec<String>>,
 
-    openings_constants: Vec<Vec<String>>,
-    openings_plonk_sigmas: Vec<Vec<String>>,
-    openings_wires: Vec<Vec<String>>,
-    openings_plonk_zs: Vec<Vec<String>>,
-    openings_plonk_zs_next: Vec<Vec<String>>,
-    openings_partial_products: Vec<Vec<String>>,
-    openings_quotient_polys: Vec<Vec<String>>,
+    pub openings_constants: Vec<Vec<String>>,
+    pub openings_plonk_sigmas: Vec<Vec<String>>,
+    pub openings_wires: Vec<Vec<String>>,
+    pub openings_plonk_zs: Vec<Vec<String>>,
+    pub openings_plonk_zs_next: Vec<Vec<String>>,
+    pub openings_partial_products: Vec<Vec<String>>,
+    pub openings_quotient_polys: Vec<Vec<String>>,
 
-    fri_commit_phase_merkle_caps: Vec<Vec<Vec<String>>>,
+    pub fri_commit_phase_merkle_caps: Vec<Vec<Vec<String>>>,
 
-    fri_query_init_constants_sigmas_v: Vec<Vec<String>>,
-    fri_query_init_constants_sigmas_p: Vec<Vec<Vec<String>>>,
-    fri_query_init_wires_v: Vec<Vec<String>>,
-    fri_query_init_wires_p: Vec<Vec<Vec<String>>>,
-    fri_query_init_zs_partial_v: Vec<Vec<String>>,
-    fri_query_init_zs_partial_p: Vec<Vec<Vec<String>>>,
-    fri_query_init_quotient_v: Vec<Vec<String>>,
-    fri_query_init_quotient_p: Vec<Vec<Vec<String>>>,
+    pub fri_query_init_constants_sigmas_v: Vec<Vec<String>>,
+    pub fri_query_init_constants_sigmas_p: Vec<Vec<Vec<String>>>,
+    pub fri_query_init_wires_v: Vec<Vec<String>>,
+    pub fri_query_init_wires_p: Vec<Vec<Vec<String>>>,
+    pub fri_query_init_zs_partial_v: Vec<Vec<String>>,
+    pub fri_query_init_zs_partial_p: Vec<Vec<Vec<String>>>,
+    pub fri_query_init_quotient_v: Vec<Vec<String>>,
+    pub fri_query_init_quotient_p: Vec<Vec<Vec<String>>>,
 
-    fri_query_step0_v: Vec<Vec<Vec<String>>>,
-    fri_query_step0_p: Vec<Vec<Vec<String>>>,
-    fri_query_step1_v: Vec<Vec<Vec<String>>>,
-    fri_query_step1_p: Vec<Vec<Vec<String>>>,
-    fri_query_step2_v: Vec<Vec<Vec<String>>>,
-    fri_query_step2_p: Vec<Vec<Vec<String>>>,
+    pub fri_query_step_v: Vec<String>,
+    pub fri_query_step_p: Vec<String>,
 
-    fri_final_poly_ext_v: Vec<Vec<String>>,
-    fri_pow_witness: String,
+    pub fri_final_poly_ext_v: Vec<Vec<String>>,
+    pub fri_pow_witness: String,
 
-    public_inputs: Vec<String>,
+    pub public_inputs: Vec<String>,
 }
 
-// TODO: The input should be CommonCircuitData
 pub fn generate_verifier_config<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -328,7 +112,6 @@ pub fn generate_verifier_config<
     pwpi: &ProofWithPublicInputs<F, C, D>,
 ) -> anyhow::Result<VerifierConfig> {
     let proof = &pwpi.proof;
-    assert_eq!(proof.opening_proof.query_round_proofs[0].steps.len(), 3);
 
     const HASH_SIZE: usize = 32;
     const FIELD_SIZE: usize = 8;
@@ -339,6 +122,13 @@ pub fn generate_verifier_config<
         .initial_trees_proof
         .evals_proofs;
     let query_round_steps = &proof.opening_proof.query_round_proofs[0].steps;
+
+    let num_fri_query_step_v: Vec<usize> =
+        query_round_steps.iter().map(|x| x.evals.len()).collect();
+    let num_fri_query_step_p: Vec<usize> = query_round_steps
+        .iter()
+        .map(|x| x.merkle_proof.siblings.len())
+        .collect();
 
     let conf = VerifierConfig {
         hash_size: HASH_SIZE,
@@ -369,12 +159,8 @@ pub fn generate_verifier_config<
         num_fri_query_init_zs_partial_p: query_round_init_trees[2].1.siblings.len(),
         num_fri_query_init_quotient_v: query_round_init_trees[3].0.len(),
         num_fri_query_init_quotient_p: query_round_init_trees[3].1.siblings.len(),
-        num_fri_query_step0_v: query_round_steps[0].evals.len(),
-        num_fri_query_step0_p: query_round_steps[0].merkle_proof.siblings.len(),
-        num_fri_query_step1_v: query_round_steps[1].evals.len(),
-        num_fri_query_step1_p: query_round_steps[1].merkle_proof.siblings.len(),
-        num_fri_query_step2_v: query_round_steps[2].evals.len(),
-        num_fri_query_step2_p: query_round_steps[2].merkle_proof.siblings.len(),
+        num_fri_query_step_v,
+        num_fri_query_step_p,
         num_fri_final_poly_ext_v: proof.opening_proof.final_poly.coeffs.len(),
 
         num_public_inputs: pwpi.public_inputs.len(),
@@ -389,7 +175,8 @@ pub fn generate_proof_base64<
 >(
     pwpi: &ProofWithPublicInputs<F, C, D>,
     conf: &VerifierConfig,
-) -> anyhow::Result<String> {
+    //) -> anyhow::Result<String> {
+) -> anyhow::Result<ProofForCircom> {
     let mut proof_size: usize =
         (conf.num_wires_cap + conf.num_plonk_zs_partial_products_cap + conf.num_quotient_polys_cap)
             * conf.hash_size;
@@ -491,12 +278,12 @@ pub fn generate_proof_base64<
     for i in 0..conf.num_openings_quotient_polys {
         openings_quotient_polys[i][0] = pwpi.proof.openings.quotient_polys[i].to_basefield_array()
             [0]
-            .to_canonical_u64()
-            .to_string();
+        .to_canonical_u64()
+        .to_string();
         openings_quotient_polys[i][1] = pwpi.proof.openings.quotient_polys[i].to_basefield_array()
             [1]
-            .to_canonical_u64()
-            .to_string();
+        .to_canonical_u64()
+        .to_string();
     }
 
     proof_size += (conf.num_fri_commit_round * conf.fri_commit_merkle_cap_height) * conf.hash_size;
@@ -518,27 +305,28 @@ pub fn generate_proof_base64<
 
     proof_size += conf.num_fri_query_round
         * ((conf.num_fri_query_init_constants_sigmas_v
-        + conf.num_fri_query_init_wires_v
-        + conf.num_fri_query_init_zs_partial_v
-        + conf.num_fri_query_init_quotient_v)
-        * conf.field_size
-        + (conf.num_fri_query_init_constants_sigmas_p
-        + conf.num_fri_query_init_wires_p
-        + conf.num_fri_query_init_zs_partial_p
-        + conf.num_fri_query_init_quotient_p)
-        * conf.hash_size
-        + conf.merkle_height_size * 4);
+            + conf.num_fri_query_init_wires_v
+            + conf.num_fri_query_init_zs_partial_v
+            + conf.num_fri_query_init_quotient_v)
+            * conf.field_size
+            + (conf.num_fri_query_init_constants_sigmas_p
+                + conf.num_fri_query_init_wires_p
+                + conf.num_fri_query_init_zs_partial_p
+                + conf.num_fri_query_init_quotient_p)
+                * conf.hash_size
+            + conf.merkle_height_size * 4);
 
-    proof_size += conf.num_fri_query_round
-        * (conf.num_fri_query_step0_v * conf.ext_field_size
-        + conf.num_fri_query_step0_p * conf.hash_size
-        + conf.merkle_height_size
-        + conf.num_fri_query_step1_v * conf.ext_field_size
-        + conf.num_fri_query_step1_p * conf.hash_size
-        + conf.merkle_height_size
-        + conf.num_fri_query_step2_v * conf.ext_field_size
-        + conf.num_fri_query_step2_p * conf.hash_size
-        + conf.merkle_height_size);
+    let mut sum: usize = 0;
+    for i in conf
+        .num_fri_query_step_v
+        .iter()
+        .zip_eq(conf.num_fri_query_step_p.clone())
+    {
+        sum += i.0 * conf.ext_field_size;
+        sum += i.1 * conf.hash_size;
+        sum += conf.merkle_height_size;
+    }
+    proof_size += conf.num_fri_query_round * sum;
 
     let mut fri_query_init_constants_sigmas_v =
         vec![
@@ -573,19 +361,27 @@ pub fn generate_proof_base64<
             conf.num_fri_query_round
         ];
 
-    let mut fri_query_step0_v =
-        vec![vec![vec!["0".to_string(); 2]; conf.num_fri_query_step0_v]; conf.num_fri_query_round];
-    let mut fri_query_step1_v =
-        vec![vec![vec!["0".to_string(); 2]; conf.num_fri_query_step1_v]; conf.num_fri_query_round];
-    let mut fri_query_step2_v =
-        vec![vec![vec!["0".to_string(); 2]; conf.num_fri_query_step2_v]; conf.num_fri_query_round];
-    let mut fri_query_step0_p =
-        vec![vec![vec!["0".to_string(); 4]; conf.num_fri_query_step0_p]; conf.num_fri_query_round];
-    let mut fri_query_step1_p =
-        vec![vec![vec!["0".to_string(); 4]; conf.num_fri_query_step1_p]; conf.num_fri_query_round];
-    let mut fri_query_step2_p =
-        vec![vec![vec!["0".to_string(); 4]; conf.num_fri_query_step2_p]; conf.num_fri_query_round];
+    let mut fri_query_step_v: Vec<String> = vec![];
+    let mut fri_query_step_p: Vec<String> = vec![];
+    for i in conf
+        .num_fri_query_step_v
+        .iter()
+        .zip_eq(conf.num_fri_query_step_p.clone())
+    {
+        fri_query_step_v.append(&mut vec![
+            "0".to_string();
+            2 * (*i.0) * conf.num_fri_query_round
+        ]);
+        fri_query_step_p.append(&mut vec![
+            "0".to_string();
+            4 * (i.1) * conf.num_fri_query_round
+        ]);
+    }
 
+    let mut sv1: usize = 0;
+    let mut sv2: usize = 0;
+    let mut sp1: usize = 0;
+    let mut sp2: usize = 0;
     for i in 0..conf.num_fri_query_round {
         assert_eq!(
             pwpi.proof.opening_proof.query_round_proofs[i]
@@ -603,6 +399,7 @@ pub fn generate_proof_base64<
                 .to_canonical_u64()
                 .to_string();
         }
+
         for j in 0..conf.num_fri_query_init_wires_v {
             fri_query_init_wires_v[i][j] = pwpi.proof.opening_proof.query_round_proofs[i]
                 .initial_trees_proof
@@ -675,76 +472,38 @@ pub fn generate_proof_base64<
                 fri_query_init_quotient_p[i][j][k] = h[k].to_canonical_u64().to_string();
             }
         }
-        for j in 0..conf.num_fri_query_step0_v {
-            fri_query_step0_v[i][j][0] = pwpi.proof.opening_proof.query_round_proofs[i].steps[0]
-                .evals[j]
-                .to_basefield_array()[0]
-                .to_canonical_u64()
-                .to_string();
-            fri_query_step0_v[i][j][1] = pwpi.proof.opening_proof.query_round_proofs[i].steps[0]
-                .evals[j]
-                .to_basefield_array()[1]
-                .to_canonical_u64()
-                .to_string();
-        }
-        for j in 0..conf.num_fri_query_step1_v {
-            fri_query_step1_v[i][j][0] = pwpi.proof.opening_proof.query_round_proofs[i].steps[1]
-                .evals[j]
-                .to_basefield_array()[0]
-                .to_canonical_u64()
-                .to_string();
-            fri_query_step1_v[i][j][1] = pwpi.proof.opening_proof.query_round_proofs[i].steps[1]
-                .evals[j]
-                .to_basefield_array()[1]
-                .to_canonical_u64()
-                .to_string();
-        }
-        for j in 0..conf.num_fri_query_step2_v {
-            fri_query_step2_v[i][j][0] = pwpi.proof.opening_proof.query_round_proofs[i].steps[2]
-                .evals[j]
-                .to_basefield_array()[0]
-                .to_canonical_u64()
-                .to_string();
-            fri_query_step2_v[i][j][1] = pwpi.proof.opening_proof.query_round_proofs[i].steps[2]
-                .evals[j]
-                .to_basefield_array()[1]
-                .to_canonical_u64()
-                .to_string();
-        }
-        assert_eq!(
-            pwpi.proof.opening_proof.query_round_proofs[i].steps.len(),
-            3
-        );
-        for j in 0..conf.num_fri_query_step0_p {
-            let h = pwpi.proof.opening_proof.query_round_proofs[i].steps[0]
-                .merkle_proof
-                .siblings[j]
-                .to_vec();
-            assert_eq!(h.len(), 4);
-            for k in 0..4 {
-                fri_query_step0_p[i][j][k] = h[k].to_canonical_u64().to_string();
+        for n in 0..conf.num_fri_query_step_v.len() {
+            for j in 0..conf.num_fri_query_step_v[n] {
+                fri_query_step_v[sv1 + sv2 + j * 2 + 0] =
+                    pwpi.proof.opening_proof.query_round_proofs[i].steps[n].evals[j]
+                        .to_basefield_array()[0]
+                        .to_canonical_u64()
+                        .to_string();
+                fri_query_step_v[sv1 + sv2 + j * 2 + 1] =
+                    pwpi.proof.opening_proof.query_round_proofs[i].steps[n].evals[j]
+                        .to_basefield_array()[1]
+                        .to_canonical_u64()
+                        .to_string();
             }
+            sv2 += 2 * conf.num_fri_query_step_v[n];
         }
-        for j in 0..conf.num_fri_query_step1_p {
-            let h = pwpi.proof.opening_proof.query_round_proofs[i].steps[1]
-                .merkle_proof
-                .siblings[j]
-                .to_vec();
-            assert_eq!(h.len(), 4);
-            for k in 0..4 {
-                fri_query_step1_p[i][j][k] = h[k].to_canonical_u64().to_string();
+        sv1 += sv2;
+        sv2 = 0;
+        for n in 0..conf.num_fri_query_step_p.len() {
+            for j in 0..conf.num_fri_query_step_p[n] {
+                let vec = pwpi.proof.opening_proof.query_round_proofs[i].steps[n]
+                    .merkle_proof
+                    .siblings[j]
+                    .to_vec();
+                assert_eq!(vec.len(), 4);
+                for k in 0..4 {
+                    fri_query_step_p[sp1 + sp2 + j * 4 + k] = vec[k].to_canonical_u64().to_string();
+                }
             }
+            sp2 += 4 * conf.num_fri_query_step_p[n];
         }
-        for j in 0..conf.num_fri_query_step2_p {
-            let h = pwpi.proof.opening_proof.query_round_proofs[i].steps[2]
-                .merkle_proof
-                .siblings[j]
-                .to_vec();
-            assert_eq!(h.len(), 4);
-            for k in 0..4 {
-                fri_query_step2_p[i][j][k] = h[k].to_canonical_u64().to_string();
-            }
-        }
+        sp1 += sp2;
+        sp2 = 0;
     }
 
     proof_size += conf.num_fri_final_poly_ext_v * conf.ext_field_size;
@@ -790,10 +549,8 @@ pub fn generate_proof_base64<
         fri_query_init_zs_partial_p,
         fri_query_init_quotient_v,
         fri_query_init_quotient_p,
-        fri_query_step0_v,
-        fri_query_step0_p,
-        fri_query_step1_v,
-        fri_query_step1_p,
+        fri_query_step_v,
+        fri_query_step_p,
         fri_final_poly_ext_v,
         fri_pow_witness: pwpi
             .proof
@@ -802,17 +559,16 @@ pub fn generate_proof_base64<
             .to_canonical_u64()
             .to_string(),
         public_inputs,
-        fri_query_step2_v,
-        fri_query_step2_p,
     };
 
     let proof_bytes = pwpi.to_bytes();
-    // assert_eq!(proof_bytes.len(), proof_size);
+    assert_eq!(proof_bytes.len(), proof_size);
     println!("proof size: {}", proof_size);
 
-    Ok(serde_json::to_string(&circom_proof).unwrap())
+    //Ok(serde_json::to_string(&circom_proof).unwrap())
+    Ok(circom_proof)
 }
-/*
+
 pub fn generate_circom_verifier<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -821,6 +577,8 @@ pub fn generate_circom_verifier<
     conf: &VerifierConfig,
     common: &CommonCircuitData<F, D>,
     verifier_only: &VerifierOnlyCircuitData<C, D>,
+    sv_len: usize,
+    sp_len: usize,
 ) -> anyhow::Result<(String, String)> {
     assert_eq!(F::BITS, 64);
     assert_eq!(F::Extension::BITS, 128);
@@ -935,22 +693,40 @@ pub fn generate_circom_verifier<
         "$NUM_FRI_QUERY_INIT_QUOTIENT_P",
         &*conf.num_fri_query_init_quotient_p.to_string(),
     );
+
+    constants = constants.replace("$FRI_QUERY_STEP_V_LEN", &*sv_len.to_string());
+    constants = constants.replace("$FRI_QUERY_STEP_P_LEN", &*sp_len.to_string());
+
+    let fri_query_step_v = &conf.num_fri_query_step_v;
+    let mut fri_query_step_v_str = "".to_owned();
+    for i in 0..fri_query_step_v.len() {
+        fri_query_step_v_str += &*("  bits[".to_owned()
+            + &*i.to_string()
+            + "] = "
+            + &*fri_query_step_v[i].to_string()
+            + ";\n");
+    }
+    constants = constants.replace("  $SET_FRI_QUERY_STEP_V;\n", &*fri_query_step_v_str);
     constants = constants.replace(
-        "$NUM_FRI_QUERY_STEP0_V",
-        &*conf.num_fri_query_step0_v.to_string(),
+        "$NUM_FRI_QUERY_STEP_V",
+        &*fri_query_step_v.len().to_string(),
     );
+
+    let fri_query_step_p = &conf.num_fri_query_step_p;
+    let mut fri_query_step_p_str = "".to_owned();
+    for i in 0..fri_query_step_p.len() {
+        fri_query_step_p_str += &*("  bits[".to_owned()
+            + &*i.to_string()
+            + "] = "
+            + &*fri_query_step_p[i].to_string()
+            + ";\n");
+    }
+    constants = constants.replace("  $SET_FRI_QUERY_STEP_P;\n", &*fri_query_step_p_str);
     constants = constants.replace(
-        "$NUM_FRI_QUERY_STEP0_P",
-        &*conf.num_fri_query_step0_p.to_string(),
+        "$NUM_FRI_QUERY_STEP_P",
+        &*fri_query_step_p.len().to_string(),
     );
-    constants = constants.replace(
-        "$NUM_FRI_QUERY_STEP1_V",
-        &*conf.num_fri_query_step1_v.to_string(),
-    );
-    constants = constants.replace(
-        "$NUM_FRI_QUERY_STEP1_P",
-        &*conf.num_fri_query_step1_p.to_string(),
-    );
+
     constants = constants.replace(
         "$NUM_FRI_FINAL_POLY_EXT_V",
         &*conf.num_fri_final_poly_ext_v.to_string(),
@@ -1156,9 +932,8 @@ pub fn generate_circom_verifier<
 
     Ok((constants, gates_lib))
 }
-*/
-/*
-#[cfg(test)]
+
+/*#[cfg(test)]
 mod tests {
     use std::fs::File;
     use std::io::Write;
@@ -1182,8 +957,8 @@ mod tests {
         },
     };
 
-    use crate::verifier::{
-        generate_circom_verifier, generate_proof_base64, generate_verifier_config, recursive_proof,fib_proof,aggregation_proof
+    use crate::circom_verifier::{
+        generate_circom_verifier, generate_proof_base64, generate_verifier_config, recursive_proof,
     };
 
     /// Creates a dummy proof which should have roughly `num_dummy_gates` gates.
@@ -1268,7 +1043,8 @@ mod tests {
         }
 
         let mut proof_file = File::create("./circom/test/data/proof.json")?;
-        proof_file.write_all(proof_json.as_bytes())?;
+        //proof_file.write_all(proof_json.as_bytes())?;
+        proof_file.write_all(serde_json::to_string(&proof_json).unwrap().as_bytes())?;
 
         let mut conf_file = File::create("./circom/test/data/conf.json")?;
         conf_file.write_all(serde_json::to_string(&conf)?.as_ref())?;
@@ -1299,7 +1075,8 @@ mod tests {
         }
 
         let mut proof_file = File::create("./circom/test/data/proof.json")?;
-        proof_file.write_all(proof_json.as_bytes())?;
+        //proof_file.write_all(proof_json.as_bytes())?;
+        proof_file.write_all(serde_json::to_string(&proof_json).unwrap().as_bytes())?;
 
         let mut conf_file = File::create("./circom/test/data/conf.json")?;
         conf_file.write_all(serde_json::to_string(&conf)?.as_ref())?;
@@ -1337,7 +1114,8 @@ mod tests {
         }
 
         let mut proof_file = File::create("./circom/test/data/proof.json")?;
-        proof_file.write_all(proof_json.as_bytes())?;
+        //proof_file.write_all(proof_json.as_bytes())?;
+        proof_file.write_all(serde_json::to_string(&proof_json).unwrap().as_bytes())?;
 
         let mut conf_file = File::create("./circom/test/data/conf.json")?;
         conf_file.write_all(serde_json::to_string(&conf)?.as_ref())?;
@@ -1355,7 +1133,8 @@ mod tests {
         let proof1 = fib_proof::<F, C, D>(1)?;
         let proof2 = fib_proof::<F, C, D>(2)?;
 
-        let agg_proof = aggregation_proof::<F , C, C, D>(&proof1, Some(proof2), &standard_config, None)?;
+        let agg_proof =
+            aggregation_proof::<F, C, C, D>(&proof1, Some(proof2), &standard_config, None)?;
         let (agg_p, vd, cd) = agg_proof;
 
         // let (proof, vd, cd) =
@@ -1366,7 +1145,8 @@ mod tests {
             recursive_proof::<F, CBn128, C, D>(agg_p, vd, cd, &standard_config, None, true, true)?;
 
         let conf = generate_verifier_config(&recursive_proof)?;
-        let (circom_constants, circom_gates) = generate_circom_verifier(&conf, &recursive_cd, &recursive_vd)?;
+        let (circom_constants, circom_gates) =
+            generate_circom_verifier(&conf, &recursive_cd, &recursive_vd)?;
 
         let mut circom_file = File::create("./circom/circuits/constants.circom")?;
         circom_file.write_all(circom_constants.as_bytes())?;
@@ -1380,7 +1160,8 @@ mod tests {
         }
 
         let mut proof_file = File::create("./circom/test/data/proof.json")?;
-        proof_file.write_all(proof_json.as_bytes())?;
+        //proof_file.write_all(proof_json.as_bytes())?;
+        proof_file.write_all(serde_json::to_string(&proof_json).unwrap().as_bytes())?;
 
         let mut conf_file = File::create("./circom/test/data/conf.json")?;
         conf_file.write_all(serde_json::to_string(&conf)?.as_ref())?;
