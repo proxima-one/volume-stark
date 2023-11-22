@@ -22,6 +22,7 @@ use plonky2_util::{log2_ceil, log2_strict};
 
 use crate::all_stark::{AllStark, Table, NUM_TABLES};
 use crate::arithmetic::arithmetic_stark::ArithmeticStark;
+use crate::bloom_stark::BloomStark;
 use crate::config::StarkConfig;
 use crate::constraint_consumer::ConstraintConsumer;
 use crate::cross_table_lookup::{cross_table_lookup_data, CtlCheckVars, CtlData};
@@ -59,6 +60,7 @@ pub fn prove<F, C, const D: usize>(
         [(); DataStark::<F, D>::COLUMNS]:,
         [(); SumStark::<F, D>::COLUMNS]:,
         [(); SearchStark::<F, D>::COLUMNS]:,
+        [(); BloomStark::<F, D>::COLUMNS]:,
 {
     let (traces, public_values) = timed!(
         timing,
@@ -87,6 +89,7 @@ pub(crate) fn prove_with_traces<F, C, const D: usize>(
         [(); DataStark::<F, D>::COLUMNS]:,
         [(); SumStark::<F, D>::COLUMNS]:,
         [(); SearchStark::<F, D>::COLUMNS]:,
+        [(); BloomStark::<F, D>::COLUMNS]:,
 {
     let rate_bits = config.fri_config.rate_bits;
     let cap_height = config.fri_config.cap_height;
@@ -176,6 +179,7 @@ fn prove_with_commitments<F, C, const D: usize>(
         [(); DataStark::<F, D>::COLUMNS]:,
         [(); SumStark::<F, D>::COLUMNS]:,
         [(); SearchStark::<F, D>::COLUMNS]:,
+        [(); BloomStark::<F, D>::COLUMNS]:,
 {
     let prove_stark = TimingTree::new("prove Arithmetic STARK", Level::Info);
     let arithmetic_proof = timed!(
@@ -282,6 +286,21 @@ fn prove_with_commitments<F, C, const D: usize>(
         )?
     );
     prove_stark.print();
+    let prove_stark = TimingTree::new("prove bloom STARK", Level::Info);
+    let bloom_proof = timed!(
+        timing,
+        "prove search STARK",
+        prove_single_table(
+            &all_stark.bloom_stark,
+            config,
+            &trace_poly_values[Table::Bloom as usize],
+            &trace_commitments[Table::Bloom as usize],
+            &ctl_data_per_table[Table::Bloom as usize],
+            challenger,
+            timing,
+        )?
+    );
+    prove_stark.print();
     Ok([
         arithmetic_proof,
         keccak_proof,
@@ -290,6 +309,7 @@ fn prove_with_commitments<F, C, const D: usize>(
         data_proof,
         sum_proof,
         search_proof,
+        bloom_proof
     ])
 }
 

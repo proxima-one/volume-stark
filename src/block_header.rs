@@ -259,7 +259,7 @@ pub struct LogIndexes {
 }
 
 impl Receipt {
-    pub fn split_rlp(data: &[u8]) -> Result<(LogIndexes), DecoderError> {
+    pub fn split_rlp(data: &[u8]) -> Result<(LogIndexes, Bloom), DecoderError> {
         let rlp = Rlp::new(data);
         let rlp_payload = rlp.payload_info().unwrap();
         let receipt_rlp = rlp.at(1)?;
@@ -270,6 +270,7 @@ impl Receipt {
             start_index += 1;
         }
         let receipt_rlp = Rlp::new(&receipt_data[start_index..]);
+        let bloom: Bloom = receipt_rlp.val_at(2)?;
         let logs_rlp = receipt_rlp.at(3)?;
 
         let container_logs = logs_rlp.payload_info().expect("Getting payload error");
@@ -286,6 +287,7 @@ impl Receipt {
         for i in 1..item_count {
             let rlp_log = logs_rlp.at(i)?;
             let payload_log = rlp_log.payload_info()?;
+
             let end_index = start_index + payload_log.header_len + payload_log.value_len - 1;
             position_logs.push((start_index, end_index));
 
@@ -294,7 +296,7 @@ impl Receipt {
         let end_of_logs = position_logs.last().unwrap().1;
         let indexes = LogIndexes { logs_container_idx: (start_of_logs, end_of_logs), logs_idx: position_logs };
 
-        Ok(indexes)
+        Ok((indexes, bloom))
     }
 }
 
@@ -303,8 +305,6 @@ mod tests {
     use super::*;
     use env_logger::{try_init_from_env, Env, DEFAULT_FILTER_ENV};
     use anyhow::Result;
-    use log::info;
-
 
     fn init_logger() {
         let _ = try_init_from_env(Env::default().filter_or(DEFAULT_FILTER_ENV, "info"));
@@ -317,6 +317,7 @@ mod tests {
         info!("Headers: {:?}, hash: {:?}", all_headers[0].hash, all_headers[0].hash());
         Ok(())
     }
+
 
 
 }

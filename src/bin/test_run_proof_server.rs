@@ -6,7 +6,7 @@ use bytes::Bytes;
 use env_logger::{DEFAULT_FILTER_ENV, Env, try_init_from_env};
 use http_body_util::{BodyExt, Full};
 use hyper::Request;
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::tokio::TokioIo;
 use log::{error, info};
 use log::Level::Error;
 use serde_json::{json, Value};

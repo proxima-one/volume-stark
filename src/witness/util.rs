@@ -6,6 +6,8 @@ use plonky2::field::types::Field;
 use crate::all_stark::Table::Data;
 
 use crate::arithmetic::{Operation, BinaryOperator};
+use crate::block_header::Receipt;
+use crate::bloom_stark::{ADDRESS_SIZE, BloomOp};
 // use crate::cpu::columns::CpuColumnsView;
 // use crate::cpu::kernel::keccak_util::keccakf_u8s;
 // use crate::cpu::membus::{NUM_CHANNELS, NUM_GP_CHANNELS};
@@ -304,6 +306,8 @@ pub(crate) fn data_leaf_log<F: Field>(
     pmt_element: PatriciaMerklePathElement
 ) {
     let mut event_parts = vec![];
+    let (_, extracted_bloom) = Receipt::split_rlp(&input.clone()).expect("RLP not splitted correctly");
+
     for event in event_logs{
         let header_prefix = pmt_element.clone().prefix.len();
         let sold_token_id_offset = event.sold_token_id_index + header_prefix;
@@ -316,28 +320,28 @@ pub(crate) fn data_leaf_log<F: Field>(
         let sold_token_id: [u8; KECCAK_DIGEST_BYTES] = input[sold_token_id_offset..sold_token_id_offset + KECCAK_DIGEST_BYTES].try_into().unwrap();
         event_parts.push(EventLogPart{
             contract: DataItem {
-                        offset: contract_offset,
-                        item: contract_data,
-                        offset_in_block: (contract_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES,
-                    },
+                offset: contract_offset,
+                item: contract_data,
+                offset_in_block: (contract_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES,
+            },
             value:DataItem {
-                        offset: value_offset,
-                        item: value_data,
-                        offset_in_block: (value_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES,
-                    },
+                offset: value_offset,
+                item: value_data,
+                offset_in_block: (value_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES,
+            },
             token_id: DataItem{
-                        offset: sold_token_id_offset,
-                        item: sold_token_id,
-                        offset_in_block: (sold_token_id_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES
-                    },
+                offset: sold_token_id_offset,
+                item: sold_token_id,
+                offset_in_block: (sold_token_id_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES
+            },
             method_signature: DataItem {
-                        offset: method_offset,
-                        item: method_data,
-                        offset_in_block: (method_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES,
-                    },
+                offset: method_offset,
+                item: method_data,
+                offset_in_block: (method_offset + KECCAK_DIGEST_BYTES) % KECCAK_RATE_BYTES,
+            },
             event_rlp_index: event.event_rlp_index + header_prefix,
             bought_token_volume_index:  event.bought_token_volume_index + KECCAK_DIGEST_BYTES + header_prefix,
-        })
+        });
     }
     event_parts.sort_by(|a, b| a.contract.offset.cmp(&b.contract.offset));
     state.traces.push_data(DataOp {
@@ -504,15 +508,3 @@ pub(crate) fn sum_log<F: Field>(
     bytes.to_vec()
 }
 
-// pub(crate) fn public_log<F:Field>(
-//     state: &mut GenerationState<F>,
-//     super_root: Vec<u8>,
-//     sum: Vec<u8>
-// ) {
-//     state.traces.push_public(
-//         PublicOp {
-//             sum,
-//             super_root
-//         }
-//     )
-// }

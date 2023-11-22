@@ -31,7 +31,7 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::thread;
-use hyper_util::rt::TokioIo;
+use hyper_util::rt::tokio::TokioIo;
 use tokio::net::TcpStream;
 use std::borrow::Borrow;
 use serde::Deserialize;

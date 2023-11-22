@@ -13,6 +13,7 @@ use plonky2::timed;
 use plonky2::util::timing::TimingTree;
 use plonky2::util::transpose;
 use crate::block_header::{LogIndexes, Receipt};
+use crate::bloom_stark::{BLOOM_SIZE_BYTES, BloomOp};
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
 use crate::cross_table_lookup::Column;
 use crate::data::columns;
@@ -56,6 +57,30 @@ pub(crate) fn ctl_looking_haystack_hash<F: Field>() -> Vec<Column<F>> {
     Column::singles(
         [cols.prefix_bytes.as_slice(), &cols.block_bytes, &[cols.shift_num], &[cols.id]].concat()
     ).collect()
+}
+
+pub(crate) fn ctl_looked_address_id<F: Field>() -> Vec<Column<F>> {
+    let cols = DATA_COL_MAP;
+    Column::singles(
+        [cols.typed_data.as_slice(), &[cols.id], &[cols.contract_address_found]].concat()
+    ).collect()
+}
+
+pub(crate) fn ctl_looked_topic_id<F: Field>() -> Vec<Column<F>> {
+    let cols = DATA_COL_MAP;
+    Column::singles(
+        [cols.typed_data.as_slice(), &[cols.id], &[cols.method_signature_found]].concat()
+    ).collect()
+}
+
+pub(crate) fn ctl_method_filter<F: Field>() -> Column<F> {
+    let cols = DATA_COL_MAP;
+    Column::single(cols.method_signature_found)
+}
+
+pub(crate) fn ctl_address_filter<F: Field>() -> Column<F> {
+    let cols = DATA_COL_MAP;
+    Column::single(cols.contract_address_found)
 }
 
 pub(crate) fn ctl_looking_keccak_sponge<F: Field>() -> Vec<Column<F>> {
@@ -218,9 +243,9 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         &self,
         operations: Vec<DataOp>,
         timing: &mut TimingTree,
-    ) -> (Vec<PolynomialValues<F>>, Vec<SearchOp>) {
+    ) -> (Vec<PolynomialValues<F>>, Vec<SearchOp>, Vec<BloomOp>) {
         // Generate the witness row-wise.
-        let (trace_rows, search_ops) = timed!(
+        let (trace_rows, search_ops, bloom_ops) = timed!(
             timing,
             "generate trace rows",
             self.generate_trace_rows(operations)
@@ -232,19 +257,20 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
             trace_rows.into_iter().map(PolynomialValues::new).collect()
         );
 
-        (trace_polys, search_ops)
+        (trace_polys, search_ops, bloom_ops)
     }
 
     fn generate_trace_rows(
         &self,
         operations: Vec<DataOp>,
-    ) -> (Vec<Vec<F>>, Vec<SearchOp>) {
+    ) -> (Vec<Vec<F>>, Vec<SearchOp>, Vec<BloomOp>) {
         let mut rows = vec![];
         let mut index = 1;
         let mut calculation_id = 1;
         let mut search_ops = vec![];
+        let mut bloom_ops = vec![];
         for op in operations {
-            rows.extend(self.generate_rows_for_op(op, &mut index, &mut search_ops, &mut calculation_id));
+            rows.extend(self.generate_rows_for_op(op, &mut index, &mut search_ops, &mut calculation_id, &mut bloom_ops));
         }
 
         let padded_len = rows.len().next_power_of_two();
@@ -255,7 +281,7 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         let mut converted_rows: Vec<Vec<F>> = rows.iter().map(|&array| array.to_vec()).collect();
         let mut trace_cols = transpose(&mut converted_rows);
         self.generate_range_checks(&mut trace_cols);
-        (trace_cols, search_ops)
+        (trace_cols, search_ops, bloom_ops)
     }
 
     fn generate_search_op(&self, row: &DataColumnsView<F>) -> SearchOp {
@@ -294,24 +320,45 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
         search_op
     }
 
+    fn generate_bloom_op(&self, row: &DataColumnsView<F>, bloom: [u8; BLOOM_SIZE_BYTES]) -> BloomOp {
+        let mut search_id = F::to_canonical_u64(&row.id) as usize;
+        let topic_data: [u8; 32] = row.typed_data
+            .iter()
+            .take(32)
+            .map(|&x| F::to_canonical_u64(&x) as u8)
+            .collect::<Vec<u8>>()
+            .try_into()
+            .unwrap_or_else(|_| panic!("Failed to convert to [u8; 20]"));
+        BloomOp {
+            bloom,
+            address: if row.contract_address_found == F::from_bool(true) {
+                Some(topic_data)
+            } else { None },
+            id: search_id,
+            topic: if row.method_signature_found == F::from_bool(true) {
+                Some(topic_data)
+            } else { None },
+        }
+    }
 
-    fn generate_rows_for_op(&self, op: DataOp, index: &mut u64, search_ops: &mut Vec<SearchOp>, calculation_id: &mut u64) -> Vec<[F; NUM_DATA_COLUMNS]> {
+
+    fn generate_rows_for_op(&self, op: DataOp, index: &mut u64, search_ops: &mut Vec<SearchOp>, calculation_id: &mut u64, bloom_ops: &mut Vec<BloomOp>) -> Vec<[F; NUM_DATA_COLUMNS]> {
         let mut rows = vec![];
         let mut input_blocks = op.input.chunks_exact(KECCAK_RATE_BYTES);
         let mut already_absorbed_bytes = 0;
         let mut index_block = 0;
         let mut previous_block: Option<DataColumnsView<F>> = None;
+        let mut bloom = None;
         let mut log_idxs = if op.data_type == DataType::Leaf {
-            let rlp_idx = Receipt::split_rlp(&op.input).expect("RLP not splitted correctly");
-            info!("INDEXES : {:?}", rlp_idx);
+            let (rlp_idx, extracted_bloom) = Receipt::split_rlp(&op.input).expect("RLP not splitted correctly");
+            bloom = Some(extracted_bloom);
             let (start_list_idx, end_list_idx) = rlp_idx.logs_container_idx;
             let mut offset_header = 0;
             match op.input[start_list_idx] {
                 248 => offset_header += 2,
                 249 => offset_header += 3,
-                _ => offset_header += 0,
+                _ => {}
             }
-            info!("{:?}", end_list_idx);
             Some(LogIndexes { logs_container_idx: (start_list_idx + offset_header, end_list_idx), logs_idx: rlp_idx.logs_idx })
         } else {
             None
@@ -337,6 +384,13 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
                 if row.id != F::ZERO {
                     let search_op = self.generate_search_op(&row.clone());
                     search_ops.push(search_op);
+                    match bloom {
+                        None => {}
+                        Some(bloom_data) => {
+                            let bloom_op = self.generate_bloom_op(&row.clone(), bloom_data.0);
+                            bloom_ops.push(bloom_op);
+                        }
+                    }
                 }
                 rows.push(row.into());
             }
@@ -359,6 +413,13 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
             if row.id != F::ZERO {
                 let search_op = self.generate_search_op(&row.clone());
                 search_ops.push(search_op);
+                match bloom {
+                    None => {}
+                    Some(bloom_data) => {
+                        let bloom_op = self.generate_bloom_op(&row.clone(), bloom_data.0);
+                        bloom_ops.push(bloom_op);
+                    }
+                }
             }
             rows.push(row.into());
         }
@@ -424,7 +485,7 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
     }
 
     fn generate_log_fields(mut log_idxs: Option<&mut &mut LogIndexes>, row: &mut DataColumnsView<F>,
-                            ) {
+    ) {
         match log_idxs {
             None => {}
             Some(mut logs) => {
@@ -647,9 +708,9 @@ impl<F: RichField + Extendable<D>, const D: usize> DataStark<F, D> {
                 *index_op += 1;
             }
         }
-        if op.data_type == Leaf {
-            info!("ROWS : {:?}", rows);
-        }
+        // if op.data_type == Leaf {
+        //     info!("ROWS : {:?}", rows);
+        // }
         rows
     }
 
@@ -688,11 +749,11 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
         yield_constr.constraint_last_row(rc1 - range_max);
 
 
-        let method_signature: [u8; 32] = [139, 62, 150, 242, 184, 137, 250, 119, 28, 83, 201, 129, 180, 13, 175, 0, 95, 99, 246, 55, 241, 134, 159, 112, 112, 82, 209, 90, 61, 217, 113, 64];
-        let converted_method_signature = method_signature.map(|byte| P::from(FE::from_canonical_u8(byte)));
-
-        let pool_address: [u8; 20] = [190, 188, 68, 120, 44, 125, 176, 161, 166, 12, 182, 254, 151, 208, 180, 131, 3, 47, 241, 199];
-        let converted_pool_address = pool_address.map(|byte| P::from(FE::from_canonical_u8(byte)));
+        // let method_signature: [u8; 32] = [139, 62, 150, 242, 184, 137, 250, 119, 28, 83, 201, 129, 180, 13, 175, 0, 95, 99, 246, 55, 241, 134, 159, 112, 112, 82, 209, 90, 61, 217, 113, 64];
+        // let converted_method_signature = method_signature.map(|byte| P::from(FE::from_canonical_u8(byte)));
+        //
+        // let pool_address: [u8; 20] = [190, 188, 68, 120, 44, 125, 176, 161, 166, 12, 182, 254, 151, 208, 180, 131, 3, 47, 241, 199];
+        // let converted_pool_address = pool_address.map(|byte| P::from(FE::from_canonical_u8(byte)));
         let method_length = P::from(FE::from_canonical_u8(32));
         let token_id_length = P::from(FE::from_canonical_u8(32));
         let contract_length = P::from(FE::from_canonical_u8(20));
@@ -748,15 +809,15 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
             );
         }
 
-        for (&xi, &yi) in converted_method_signature.iter().zip_eq(local_values.typed_data.iter()) {
-            yield_constr.constraint_transition(
-                local_values.method_signature_found * (xi - yi),
-            );
-        }
-
-        for (&xi, &yi) in converted_pool_address.iter().zip_eq(local_values.typed_data.iter().take(20)) {
-            yield_constr.constraint_transition(local_values.contract_address_found * (xi - yi));
-        }
+        // for (&xi, &yi) in converted_method_signature.iter().zip_eq(local_values.typed_data.iter()) {
+        //     yield_constr.constraint_transition(
+        //         local_values.method_signature_found * (xi - yi),
+        //     );
+        // }
+        //
+        // for (&xi, &yi) in converted_pool_address.iter().zip_eq(local_values.typed_data.iter().take(20)) {
+        //     yield_constr.constraint_transition(local_values.contract_address_found * (xi - yi));
+        // }
 
         yield_constr.constraint_transition(local_values.contract_address_found *
             (next_values.offset_object - (local_values.offset_object + contract_length) - offset_contract_method));
@@ -800,11 +861,11 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
         yield_constr.constraint_last_row(builder, t);
 
 
-        let method_signature: [u8; 32] = [139, 62, 150, 242, 184, 137, 250, 119, 28, 83, 201, 129, 180, 13, 175, 0, 95, 99, 246, 55, 241, 134, 159, 112, 112, 82, 209, 90, 61, 217, 113, 64];
-        let converted_method_signature = method_signature.map(|byte| F::Extension::from_canonical_u8(byte));
-
-        let pool_address: [u8; 20] = [190, 188, 68, 120, 44, 125, 176, 161, 166, 12, 182, 254, 151, 208, 180, 131, 3, 47, 241, 199];
-        let converted_pool_address = pool_address.map(|byte| F::Extension::from_canonical_u8(byte));
+        // let method_signature: [u8; 32] = [139, 62, 150, 242, 184, 137, 250, 119, 28, 83, 201, 129, 180, 13, 175, 0, 95, 99, 246, 55, 241, 134, 159, 112, 112, 82, 209, 90, 61, 217, 113, 64];
+        // let converted_method_signature = method_signature.map(|byte| F::Extension::from_canonical_u8(byte));
+        //
+        // let pool_address: [u8; 20] = [190, 188, 68, 120, 44, 125, 176, 161, 166, 12, 182, 254, 151, 208, 180, 131, 3, 47, 241, 199];
+        // let converted_pool_address = pool_address.map(|byte| F::Extension::from_canonical_u8(byte));
 
         let contract_length = builder.constant_extension(F::Extension::from_canonical_u8(20));
         let method_length = builder.constant_extension(F::Extension::from_canonical_u8(32));
@@ -886,27 +947,27 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for DataStark<F, 
             );
         }
 
-        for (&xi, &yi) in converted_method_signature.iter().zip_eq(local_values.typed_data.iter()) {
-            let constraint = {
-                let constant_byte = builder.constant_extension(xi);
-                let sub = builder.sub_extension(constant_byte, yi);
-                builder.mul_extension(local_values.method_signature_found, sub)
-            };
-            yield_constr.constraint_transition(
-                builder, constraint,
-            );
-        }
-
-        for (&xi, &yi) in converted_pool_address.iter().zip_eq(local_values.typed_data.iter().take(20)) {
-            let constraint = {
-                let constant_byte = builder.constant_extension(xi);
-                let sub = builder.sub_extension(constant_byte, yi);
-                builder.mul_extension(local_values.contract_address_found, sub)
-            };
-            yield_constr.constraint_transition(
-                builder, constraint,
-            );
-        }
+        // for (&xi, &yi) in converted_method_signature.iter().zip_eq(local_values.typed_data.iter()) {
+        //     let constraint = {
+        //         let constant_byte = builder.constant_extension(xi);
+        //         let sub = builder.sub_extension(constant_byte, yi);
+        //         builder.mul_extension(local_values.method_signature_found, sub)
+        //     };
+        //     yield_constr.constraint_transition(
+        //         builder, constraint,
+        //     );
+        // }
+        //
+        // for (&xi, &yi) in converted_pool_address.iter().zip_eq(local_values.typed_data.iter().take(20)) {
+        //     let constraint = {
+        //         let constant_byte = builder.constant_extension(xi);
+        //         let sub = builder.sub_extension(constant_byte, yi);
+        //         builder.mul_extension(local_values.contract_address_found, sub)
+        //     };
+        //     yield_constr.constraint_transition(
+        //         builder, constraint,
+        //     );
+        // }
         let constraint = {
             let addition = builder.add_extension(local_values.offset_object, contract_length);
             let offset_diff = builder.sub_extension(next_values.offset_object, addition);

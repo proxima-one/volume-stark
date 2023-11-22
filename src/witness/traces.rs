@@ -20,6 +20,7 @@ use crate::keccak_sponge::keccak_sponge_stark::KeccakSpongeOp;
 use crate::util::trace_rows_to_poly_values;
 // use crate::witness::memory::MemoryOp;
 use crate::{arithmetic, keccak, logic};
+use crate::bloom_stark::BloomOp;
 use crate::search_substring::search_stark::columns::HAYSTACK_SIZE;
 use crate::search_substring::search_stark::SearchOp;
 use crate::summation::{ChainResult};
@@ -35,6 +36,7 @@ pub struct TraceCheckpoint {
     pub(self) data_len: usize,
     pub(self) sum_len: usize,
     pub(self) search_len: usize,
+    pub(self) bloom_len: usize
 }
 
 #[derive(Debug)]
@@ -48,6 +50,7 @@ pub(crate) struct Traces<T: Copy> {
     pub(crate) data_ops: Vec<DataOp>,
     pub(crate) sum_ops: Vec<ChainResult>,
     pub(crate) search_ops: Vec<SearchOp>,
+    pub(crate) bloom_ops: Vec<BloomOp>,
 }
 
 impl<T: Copy> Traces<T> {
@@ -62,6 +65,7 @@ impl<T: Copy> Traces<T> {
             data_ops: vec![],
             sum_ops: vec![],
             search_ops: vec![],
+            bloom_ops: vec![],
         }
     }
 
@@ -74,6 +78,7 @@ impl<T: Copy> Traces<T> {
             data_len: self.data_ops.len(),
             sum_len: self.sum_ops.len(),
             search_len: self.search_ops.len(),
+            bloom_len: self.bloom_ops.len(),
         }
     }
 
@@ -84,8 +89,10 @@ impl<T: Copy> Traces<T> {
             .truncate(checkpoint.keccak_sponge_len);
         self.logic_ops.truncate(checkpoint.logic_len);
         self.data_ops.truncate(checkpoint.data_len);
-        self.sum_ops.truncate(checkpoint.data_len);
+        self.sum_ops.truncate(checkpoint.sum_len);
         self.search_ops.truncate(checkpoint.search_len);
+        self.bloom_ops.truncate(checkpoint.bloom_len);
+
     }
 
     pub fn push_logic(&mut self, op: logic::Operation) {
@@ -122,27 +129,29 @@ impl<T: Copy> Traces<T> {
         self.data_ops.push(op);
     }
 
+    pub fn push_bloom(&mut self, op: BloomOp) {
+        self.bloom_ops.push(op);
+    }
+
     pub fn into_tables<const D: usize>(
         self,
         all_stark: &AllStark<T, D>,
         config: &StarkConfig,
         timing: &mut TimingTree,
     ) -> [Vec<PolynomialValues<T>>; NUM_TABLES]
-    where
-        T: RichField + Extendable<D>,
+        where
+            T: RichField + Extendable<D>,
     {
         let cap_elements = config.fri_config.num_cap_elements();
         let Traces {
             arithmetic_ops,
-            // cpu:_,
             logic_ops,
-            // memory_ops:_,
             keccak_inputs,
             keccak_sponge_ops,
             data_ops,
-            sum_ops,
-            search_ops,
-            // public_ops,
+            sum_ops, ..
+            // search_ops,
+            // bloom_ops
         } = self;
 
         let arithmetic_trace = timed!(
@@ -175,7 +184,7 @@ impl<T: Copy> Traces<T> {
                 .generate_trace(logic_ops, cap_elements, timing)
         );
         info!("Logic trace: {}", logic_trace[0].len());
-        let (data_trace, search_ops) = timed!(
+        let (data_trace, search_ops, bloom_ops) = timed!(
             timing,
             "generate data trace",
             all_stark
@@ -198,6 +207,16 @@ impl<T: Copy> Traces<T> {
                 .generate_trace(search_ops, timing)
         );
         info!("Search trace: {}", search_trace[0].len());
+
+        let bloom_trace = timed!(
+            timing,
+            "generate sum trace",
+            all_stark
+                .bloom_stark
+                .generate_trace(bloom_ops, timing)
+        );
+        info!("Bloom trace: {}", bloom_trace[0].len());
+
         [
             arithmetic_trace,
             keccak_trace,
@@ -206,6 +225,7 @@ impl<T: Copy> Traces<T> {
             data_trace,
             sum_trace,
             search_trace,
+            bloom_trace
         ]
     }
 }

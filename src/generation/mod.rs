@@ -351,8 +351,8 @@ mod tests {
         let inputs: GenerationInputs = Default::default();
         let config = StarkConfig::standard_fast_config();
         let all_stark = AllStark::<F, D>::default();
-        let degree_bit_ranges_high = [12usize, 16, 12, 14, 15, 12, 16];
-        let degree_bit_ranges_low = [8usize, 9, 5, 7, 5, 7, 10];
+        let degree_bit_ranges_high = [12usize, 16, 12, 14, 15, 12, 16, 5];
+        let degree_bit_ranges_low = [8usize, 9, 5, 7, 5, 7, 10, 3];
         let degree_bit_ranges = degree_bit_ranges_low.iter().zip(degree_bit_ranges_high.iter()).map(|(x, y)| *x..*y).collect::<Vec<_>>().try_into().unwrap();
         println!("{:?}", degree_bit_ranges);
         let recursive_circuit: AllRecursiveCircuits<GoldilocksField, C, D> = AllRecursiveCircuits::new(

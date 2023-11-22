@@ -39,6 +39,7 @@ pub mod block_header;
 
 pub mod data;
 pub mod circom_verifier;
+pub mod bloom_stark;
 
 use eth_trie_utils::partial_trie::HashedPartialTrie;
 // Set up Jemalloc

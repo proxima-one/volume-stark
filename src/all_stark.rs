@@ -13,7 +13,8 @@ use crate::keccak::keccak_stark;
 use crate::keccak::keccak_stark::KeccakStark;
 use crate::keccak_sponge::keccak_sponge_stark;
 use crate::keccak_sponge::keccak_sponge_stark::KeccakSpongeStark;
-use crate::{logic};
+use crate::{bloom_stark, logic};
+use crate::bloom_stark::BloomStark;
 use crate::logic::LogicStark;
 use crate::search_substring::search_stark;
 use crate::search_substring::search_stark::SearchStark;
@@ -30,6 +31,7 @@ pub struct AllStark<F: RichField + Extendable<D>, const D: usize> {
     pub data_stark: DataStark<F, D>,
     pub sum_stark: SumStark<F, D>,
     pub search_stark: SearchStark<F, D>,
+    pub bloom_stark: BloomStark<F, D>,
     pub cross_table_lookups: Vec<CrossTableLookup<F>>,
 }
 
@@ -44,6 +46,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Default for AllStark<F, D> {
             data_stark: DataStark::default(),
             sum_stark: SumStark::default(),
             search_stark: SearchStark::default(),
+            bloom_stark: BloomStark::default(),
             cross_table_lookups: all_cross_table_lookups(),
         }
     }
@@ -59,6 +62,7 @@ impl<F: RichField + Extendable<D>, const D: usize> AllStark<F, D> {
             self.data_stark.num_permutation_batches(config),
             self.sum_stark.num_permutation_batches(config),
             self.search_stark.num_permutation_batches(config),
+            self.bloom_stark.num_permutation_batches(config)
         ]
     }
 
@@ -71,6 +75,7 @@ impl<F: RichField + Extendable<D>, const D: usize> AllStark<F, D> {
             self.data_stark.permutation_batch_size(),
             self.sum_stark.permutation_batch_size(),
             self.search_stark.permutation_batch_size(),
+            self.bloom_stark.permutation_batch_size(),
         ]
     }
 }
@@ -84,9 +89,10 @@ pub enum Table {
     Data = 4,
     Sum = 5,
     Search = 6,
+    Bloom = 7,
 }
 
-pub(crate) const NUM_TABLES: usize = Table::Search as usize + 1;
+pub(crate) const NUM_TABLES: usize = Table::Bloom as usize + 1;
 
 impl Table {
     pub(crate) fn all() -> [Self; NUM_TABLES] {
@@ -98,6 +104,8 @@ impl Table {
             Self::Data,
             Self::Sum,
             Self::Search,
+            Self::Bloom
+
         ]
     }
 }
@@ -116,6 +124,7 @@ pub(crate) fn all_cross_table_lookups<F: Field>() -> Vec<CrossTableLookup<F>> {
         ctl_mult_value(),
         ctl_volume_value(),
         ctl_token_id(),
+        ctl_bloom()
     ]
 }
 
@@ -302,6 +311,28 @@ fn ctl_token_id<F: Field>() -> CrossTableLookup<F> {
     );
 
     CrossTableLookup::new(vec![string_looked], string_looking)
+}
+
+fn ctl_bloom<F: Field>() -> CrossTableLookup<F> {
+    let bloom_looking = TableWithColumns::new(
+        Table::Bloom,
+        bloom_stark::ctl_looking_topic(),
+        Some(bloom_stark::ctl_not_dummy_filter()),
+    );
+
+    let address_looked = TableWithColumns::new(
+        Table::Data,
+        data_stark::ctl_looked_address_id(),
+        Some(data_stark::ctl_address_filter()),
+    );
+
+    let topic_looked = TableWithColumns::new(
+        Table::Data,
+        data_stark::ctl_looked_topic_id(),
+        Some(data_stark::ctl_method_filter()),
+    );
+
+    CrossTableLookup::new(vec![topic_looked, address_looked], bloom_looking)
 }
 
 

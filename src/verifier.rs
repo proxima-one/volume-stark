@@ -11,6 +11,7 @@ use plonky2::plonk::plonk_common::reduce_with_powers;
 
 use crate::all_stark::{AllStark, Table, NUM_TABLES};
 use crate::arithmetic::arithmetic_stark::ArithmeticStark;
+use crate::bloom_stark::BloomStark;
 use crate::config::StarkConfig;
 use crate::constraint_consumer::ConstraintConsumer;
 use crate::cross_table_lookup::{verify_cross_table_lookups, CtlCheckVars};
@@ -41,6 +42,7 @@ pub fn verify_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, cons
         [(); DataStark::<F, D>::COLUMNS]:,
         [(); SumStark::<F, D>::COLUMNS]:,
         [(); SearchStark::<F, D>::COLUMNS]:,
+        [(); BloomStark::<F, D>::COLUMNS]:,
 {
     let AllProofChallenges {
         stark_challenges,
@@ -57,6 +59,7 @@ pub fn verify_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, cons
         data_stark,
         sum_stark,
         search_stark,
+        bloom_stark,
         cross_table_lookups,
     } = all_stark;
 
@@ -115,6 +118,13 @@ pub fn verify_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, cons
         &all_proof.stark_proofs[Table::Search as usize].proof,
         &stark_challenges[Table::Search as usize],
         &ctl_vars_per_table[Table::Search as usize],
+        config,
+    )?;
+    verify_stark_proof_with_challenges(
+        bloom_stark,
+        &all_proof.stark_proofs[Table::Bloom as usize].proof,
+        &stark_challenges[Table::Bloom as usize],
+        &ctl_vars_per_table[Table::Bloom as usize],
         config,
     )?;
 

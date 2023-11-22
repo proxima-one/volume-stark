@@ -40,7 +40,7 @@ serde_json = "1.0"
 hyper = { version = "1.0.0-rc.4", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
 http-body-util = "0.1.0-rc.3"
-hyper-util = { git = "https://github.com/hyperium/hyper-util.git" }
+hyper-util = { git = "https://github.com/hyperium/hyper-util.git", features = ["tokio"] }
 bytes = "1"
 base64 = "0.21.4"
 url = "2.2"

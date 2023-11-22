@@ -41,7 +41,7 @@ pub fn generate_circuit_data(degree_bits: (&[u8], &[u8]), config_file: &str) -> 
     let all_stark = AllStark::<F, D>::default();
     let min_degree_bits = degree_bits.0;
     let max_degree_bits = degree_bits.1;
-    let mut degree_bit_ranges: [Range<usize>; 7] = Default::default();
+    let mut degree_bit_ranges: [Range<usize>; 8] = Default::default();
     for i in 0..min_degree_bits.len() {
         degree_bit_ranges[i] = min_degree_bits[i] as usize..max_degree_bits[i] as usize;
     }

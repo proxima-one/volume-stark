@@ -26,6 +26,7 @@ use plonky2_util::log2_ceil;
 
 use crate::all_stark::{all_cross_table_lookups, AllStark, Table, NUM_TABLES};
 use crate::arithmetic::arithmetic_stark::ArithmeticStark;
+use crate::bloom_stark::BloomStark;
 use crate::config::StarkConfig;
 use crate::cross_table_lookup::{verify_cross_table_lookups_circuit, CrossTableLookup};
 use crate::data::data_stark::DataStark;
@@ -249,6 +250,8 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
         [(); DataStark::<F, D>::COLUMNS]:,
         [(); SumStark::<F, D>::COLUMNS]:,
         [(); SearchStark::<F, D>::COLUMNS]:,
+        [(); BloomStark::<F, D>::COLUMNS]:,
+
 {
     pub fn to_bytes(
         &self,
@@ -361,8 +364,15 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
             &all_stark.cross_table_lookups,
             stark_config,
         );
+        let bloom = RecursiveCircuitsForTable::new(
+            Table::Bloom,
+            &all_stark.bloom_stark,
+            degree_bits_ranges[7].clone(),
+            &all_stark.cross_table_lookups,
+            stark_config,
+        );
 
-        let by_table = [arithmetic, keccak, keccak_sponge, logic, data, sum, search];
+        let by_table = [arithmetic, keccak, keccak_sponge, logic, data, sum, search, bloom];
         let root = Self::create_root_circuit(&by_table, stark_config);
         let aggregation = Self::create_aggregation_circuit(&root);
         Self {
@@ -435,7 +445,7 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
         // Extra products to add to the looked last value
         // Arithmetic, KeccakSponge, Keccak, Logic
         let mut extra_looking_products =
-            vec![vec![builder.constant(F::ONE); stark_config.num_challenges]; NUM_TABLES - 3]; // LOOK HERE
+            vec![vec![builder.constant(F::ONE); stark_config.num_challenges]; NUM_TABLES - 4]; // LOOK HERE
         extra_looking_products.push(Vec::new());
         for c in 0..stark_config.num_challenges {
             extra_looking_products[Table::Data as usize].push(Self::get_data_extra_looking_products_circuit(
@@ -451,6 +461,10 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
         extra_looking_products.push(Vec::new());
         for c in 0..stark_config.num_challenges {
             extra_looking_products[Table::Search as usize].push(builder.constant(F::ONE));
+        }
+        extra_looking_products.push(Vec::new());
+        for c in 0..stark_config.num_challenges {
+            extra_looking_products[Table::Bloom as usize].push(builder.constant(F::ONE));
         }
 
         // Verify the CTL checks.
