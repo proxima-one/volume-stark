@@ -20,7 +20,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize> A
         all_stark: &AllStark<F, D>,
         config: &StarkConfig,
     ) -> AllProofChallenges<F, D> {
-        let mut challenger = Challenger::<F, C::Hasher>::new();
+        let mut challenger = Challenger::<F, C::Hasher, H>::new();
 
         for proof in &self.stark_proofs {
             challenger.observe_cap(&proof.proof.trace_cap);
@@ -54,7 +54,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize> A
         all_stark: &AllStark<F, D>,
         config: &StarkConfig,
     ) -> AllChallengerState<F, C::Hasher, D> {
-        let mut challenger = Challenger::<F, C::Hasher>::new();
+        let mut challenger = Challenger::<F, C::Hasher, H>::new();
 
         for proof in &self.stark_proofs {
             challenger.observe_cap(&proof.proof.trace_cap);
@@ -94,7 +94,7 @@ where
     /// Computes all Fiat-Shamir challenges used in the STARK proof.
     pub(crate) fn get_challenges(
         &self,
-        challenger: &mut Challenger<F, C::Hasher>,
+        challenger: &mut Challenger<F, C::Hasher, H>,
         stark_use_permutation: bool,
         stark_permutation_batch_size: usize,
         config: &StarkConfig,
@@ -153,13 +153,13 @@ impl<const D: usize> StarkProofTarget<D> {
     pub(crate) fn get_challenges<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>>(
         &self,
         builder: &mut CircuitBuilder<F, D>,
-        challenger: &mut RecursiveChallenger<F, C::Hasher, D>,
+        challenger: &mut RecursiveChallenger<F, C::Hasher, D, D>,
         stark_use_permutation: bool,
         stark_permutation_batch_size: usize,
         config: &StarkConfig,
     ) -> StarkProofChallengesTarget<D>
     where
-        C::Hasher: AlgebraicHasher<F>,
+        C::Hasher: AlgebraicHasher<F, HC>,
     {
         let StarkProofTarget {
             permutation_ctl_zs_cap,

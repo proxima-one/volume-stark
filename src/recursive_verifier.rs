@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use anyhow::{ensure, Result};
-use ethereum_types::{BigEndianHash};
+use ethereum_types::BigEndianHash;
 use plonky2::field::extension::Extendable;
 use plonky2::field::types::Field;
 use plonky2::fri::witness_util::set_fri_proof_target;
@@ -36,8 +36,13 @@ use crate::permutation::{
 use crate::proof::{
     // BlockMetadata,
     // BlockMetadataTarget,
-    PublicValues, PublicValuesTarget, StarkOpeningSetTarget,
-    StarkProof, StarkProofChallengesTarget, StarkProofTarget, StarkProofWithMetadata,
+    PublicValues,
+    PublicValuesTarget,
+    StarkOpeningSetTarget,
+    StarkProof,
+    StarkProofChallengesTarget,
+    StarkProofTarget,
+    StarkProofWithMetadata,
     // TrieRoots,
     // TrieRootsTarget,
 };
@@ -55,8 +60,10 @@ pub struct RecursiveAllProof<
     pub recursive_proofs: [ProofWithPublicInputs<F, C, D>; NUM_TABLES],
 }
 
-pub(crate) struct PublicInputs<T: Copy + Default + Eq + PartialEq + Debug, P: PlonkyPermutation<T>>
-{
+pub(crate) struct PublicInputs<
+    T: Copy + Default + Eq + PartialEq + Debug,
+    P: PlonkyPermutation<T, HC>,
+> {
     pub(crate) trace_cap: Vec<Vec<T>>,
     pub(crate) ctl_zs_last: Vec<T>,
     pub(crate) ctl_challenges: GrandProductChallengeSet<T>,
@@ -64,7 +71,7 @@ pub(crate) struct PublicInputs<T: Copy + Default + Eq + PartialEq + Debug, P: Pl
     pub(crate) challenger_state_after: P,
 }
 
-impl<T: Copy + Debug + Default + Eq + PartialEq, P: PlonkyPermutation<T>> PublicInputs<T, P> {
+impl<T: Copy + Debug + Default + Eq + PartialEq, P: PlonkyPermutation<T, HC>> PublicInputs<T, P> {
     pub(crate) fn from_vec(v: &[T], config: &StarkConfig) -> Self {
         // TODO: Document magic number 4; probably comes from
         // Ethereum 256 bits = 4 * Goldilocks 64 bits
@@ -97,7 +104,7 @@ impl<T: Copy + Debug + Default + Eq + PartialEq, P: PlonkyPermutation<T>> Public
 }
 
 impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
-RecursiveAllProof<F, C, D>
+    RecursiveAllProof<F, C, D>
 {
     /// Verify every recursive proof.
     pub fn verify(
@@ -162,24 +169,24 @@ RecursiveAllProof<F, C, D>
 /// Represents a circuit which recursively verifies a STARK proof.
 #[derive(Eq, PartialEq, Debug)]
 pub(crate) struct StarkWrapperCircuit<F, C, const D: usize>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
-        C::Hasher: AlgebraicHasher<F>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    C::Hasher: AlgebraicHasher<F, HC>,
 {
     pub(crate) circuit: CircuitData<F, C, D>,
     pub(crate) stark_proof_target: StarkProofTarget<D>,
     pub(crate) ctl_challenges_target: GrandProductChallengeSet<Target>,
     pub(crate) init_challenger_state_target:
-    <C::Hasher as AlgebraicHasher<F>>::AlgebraicPermutation,
+        <C::Hasher as AlgebraicHasher<F>>::AlgebraicPermutation,
     pub(crate) zero_target: Target,
 }
 
 impl<F, C, const D: usize> StarkWrapperCircuit<F, C, D>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
-        C::Hasher: AlgebraicHasher<F>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    C::Hasher: AlgebraicHasher<F, HC>,
 {
     pub fn to_buffer(
         &self,
@@ -203,7 +210,9 @@ impl<F, C, const D: usize> StarkWrapperCircuit<F, C, D>
         let circuit = buffer.read_circuit_data(gate_serializer, generator_serializer)?;
         let target_vec = buffer.read_target_vec()?;
         let init_challenger_state_target =
-            <C::Hasher as AlgebraicHasher<F>>::AlgebraicPermutation::new(target_vec.into_iter());
+            <C::Hasher as AlgebraicHasher<F, HC>>::AlgebraicPermutation::new(
+                target_vec.into_iter(),
+            );
         let zero_target = buffer.read_target()?;
         let stark_proof_target = StarkProofTarget::from_buffer(buffer)?;
         let ctl_challenges_target = GrandProductChallengeSet::from_buffer(buffer)?;
@@ -252,19 +261,19 @@ impl<F, C, const D: usize> StarkWrapperCircuit<F, C, D>
 /// Represents a circuit which recursively verifies a PLONK proof.
 #[derive(Eq, PartialEq, Debug)]
 pub(crate) struct PlonkWrapperCircuit<F, C, const D: usize>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
 {
     pub(crate) circuit: CircuitData<F, C, D>,
     pub(crate) proof_with_pis_target: ProofWithPublicInputsTarget<D>,
 }
 
 impl<F, C, const D: usize> PlonkWrapperCircuit<F, C, D>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
-        C::Hasher: AlgebraicHasher<F>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    C::Hasher: AlgebraicHasher<F, HC>,
 {
     pub(crate) fn prove(
         &self,
@@ -291,9 +300,9 @@ pub(crate) fn recursive_stark_circuit<
     circuit_config: &CircuitConfig,
     min_degree_bits: usize,
 ) -> StarkWrapperCircuit<F, C, D>
-    where
-        [(); S::COLUMNS]:,
-        C::Hasher: AlgebraicHasher<F>,
+where
+    [(); S::COLUMNS]:,
+    C::Hasher: AlgebraicHasher<F, HC>,
 {
     let mut builder = CircuitBuilder::<F, D>::new(circuit_config.clone());
     let zero_target = builder.zero();
@@ -331,9 +340,9 @@ pub(crate) fn recursive_stark_circuit<
     );
 
     let init_challenger_state_target =
-        <C::Hasher as AlgebraicHasher<F>>::AlgebraicPermutation::new(std::iter::from_fn(|| {
-            Some(builder.add_virtual_public_input())
-        }));
+        <C::Hasher as AlgebraicHasher<F, HC>>::AlgebraicPermutation::new(std::iter::from_fn(
+            || Some(builder.add_virtual_public_input()),
+        ));
     let mut challenger =
         RecursiveChallenger::<F, C::Hasher, D>::from_state(init_challenger_state_target);
     let challenges = proof_target.get_challenges::<F, C>(
@@ -399,7 +408,7 @@ fn verify_stark_proof_with_challenges_circuit<
     ctl_vars: &[CtlCheckVarsTarget<F, D>],
     inner_config: &StarkConfig,
 ) where
-    C::Hasher: AlgebraicHasher<F>,
+    C::Hasher: AlgebraicHasher<F, HC>,
     [(); S::COLUMNS]:,
 {
     let zero = builder.zero();
@@ -582,7 +591,7 @@ pub(crate) fn set_stark_proof_target<F, C: GenericConfig<D, F = F>, W, const D: 
     zero: Target,
 ) where
     F: RichField + Extendable<D>,
-    C::Hasher: AlgebraicHasher<F>,
+    C::Hasher: AlgebraicHasher<F, HC>,
     W: Witness<F>,
 {
     witness.set_cap_target(&proof_target.trace_cap, &proof.trace_cap);
@@ -619,7 +628,13 @@ pub(crate) fn set_public_value_targets<F, W, const D: usize>(
             F::from_canonical_u32((limb >> 32) as u32),
         );
     }
-    for (i, limb) in public_values.starting_blockhash.into_uint().0.into_iter().enumerate() {
+    for (i, limb) in public_values
+        .starting_blockhash
+        .into_uint()
+        .0
+        .into_iter()
+        .enumerate()
+    {
         witness.set_target(
             public_values_target.starting_blockhash[2 * i],
             F::from_canonical_u32(limb as u32),
@@ -629,7 +644,13 @@ pub(crate) fn set_public_value_targets<F, W, const D: usize>(
             F::from_canonical_u32((limb >> 32) as u32),
         );
     }
-    for (i, limb) in public_values.ending_blockhash.into_uint().0.into_iter().enumerate() {
+    for (i, limb) in public_values
+        .ending_blockhash
+        .into_uint()
+        .0
+        .into_iter()
+        .enumerate()
+    {
         witness.set_target(
             public_values_target.ending_blockhash[2 * i],
             F::from_canonical_u32(limb as u32),

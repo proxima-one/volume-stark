@@ -12,7 +12,7 @@ use poseidon_permutation::bindings::permute;
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub struct PoseidonBN128Permutation;
-impl<F: RichField> PlonkyPermutation<F> for PoseidonBN128Permutation {
+impl<F: RichField> PlonkyPermutation<F, HC> for PoseidonBN128Permutation {
     fn permute(input: [F; SPONGE_WIDTH]) -> [F; SPONGE_WIDTH] {
         assert_eq!(SPONGE_WIDTH, 12);
         unsafe {
@@ -99,7 +99,7 @@ impl<F: RichField> PlonkyPermutation<F> for PoseidonBN128Permutation {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct PoseidonBN128Hash;
-impl<F: RichField> Hasher<F> for PoseidonBN128Hash {
+impl<F: RichField> Hasher<F, HC> for PoseidonBN128Hash {
     const HASH_SIZE: usize = 4 * 8;
     type Hash = HashOut<F>;
     type Permutation = PoseidonBN128Permutation;
@@ -118,7 +118,7 @@ impl<F: RichField> Hasher<F> for PoseidonBN128Hash {
 }
 
 // TODO: this is a work around. Still use Goldilocks based Poseidon for algebraic PoseidonBN128Hash.
-impl<F: RichField> AlgebraicHasher<F> for PoseidonBN128Hash {
+impl<F: RichField> AlgebraicHasher<F, HC> for PoseidonBN128Hash {
     fn permute_swapped<const D: usize>(
         inputs: [Target; SPONGE_WIDTH],
         swap: BoolTarget,
@@ -149,6 +149,10 @@ impl GenericConfig<2> for PoseidonBN128GoldilocksConfig {
     type FE = QuadraticExtension<Self::F>;
     type Hasher = PoseidonBN128Hash;
     type InnerHasher = PoseidonBN128Hash;
+
+    type HCO = todo!();
+
+    type HCI = todo!();
 }
 
 #[cfg(test)]

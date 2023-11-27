@@ -71,7 +71,7 @@ pub struct AllRecursiveCircuits<F, C, const D: usize>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
-    C::Hasher: AlgebraicHasher<F>,
+    C::Hasher: AlgebraicHasher<F, HC>,
 {
     /// The EVM root circuit, which aggregates the (shrunk) per-table recursive proofs.
     pub root: RootCircuitData<F, C, D>,
@@ -244,7 +244,7 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F> + 'static,
-    C::Hasher: AlgebraicHasher<F>,
+    C::Hasher: AlgebraicHasher<F, HC>,
     [(); ArithmeticStark::<F, D>::COLUMNS]:,
     [(); KeccakStark::<F, D>::COLUMNS]:,
     [(); KeccakSpongeStark::<F, D>::COLUMNS]:,
@@ -389,7 +389,7 @@ where
         let recursive_proofs =
             core::array::from_fn(|i| builder.add_virtual_proof_with_pis(inner_common_data[i]));
         let pis: [_; NUM_TABLES] = core::array::from_fn(|i| {
-            PublicInputs::<Target, <C::Hasher as AlgebraicHasher<F>>::AlgebraicPermutation>::from_vec(
+            PublicInputs::<Target, <C::Hasher as AlgebraicHasher<F, HC>>::AlgebraicPermutation>::from_vec(
                 &recursive_proofs[i].public_inputs,
                 stark_config,
             )
@@ -722,7 +722,7 @@ pub struct RecursiveCircuitsForTable<F, C, const D: usize>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
-    C::Hasher: AlgebraicHasher<F>,
+    C::Hasher: AlgebraicHasher<F, HC>,
 {
     /// A map from `log_2(height)` to a chain of shrinking recursion circuits starting at that
     /// height.
@@ -733,7 +733,7 @@ impl<F, C, const D: usize> RecursiveCircuitsForTable<F, C, D>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
-    C::Hasher: AlgebraicHasher<F>,
+    C::Hasher: AlgebraicHasher<F, HC>,
 {
     pub fn to_buffer(
         &self,
@@ -818,7 +818,7 @@ struct RecursiveCircuitsForTableSize<F, C, const D: usize>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
-    C::Hasher: AlgebraicHasher<F>,
+    C::Hasher: AlgebraicHasher<F, HC>,
 {
     initial_wrapper: StarkWrapperCircuit<F, C, D>,
     shrinking_wrappers: Vec<PlonkWrapperCircuit<F, C, D>>,
@@ -828,7 +828,7 @@ impl<F, C, const D: usize> RecursiveCircuitsForTableSize<F, C, D>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
-    C::Hasher: AlgebraicHasher<F>,
+    C::Hasher: AlgebraicHasher<F, HC>,
 {
     pub fn to_buffer(
         &self,
@@ -847,7 +847,6 @@ where
             buffer.write_prover_only_circuit_data(
                 &wrapper.circuit.prover_only,
                 generator_serializer,
-                &wrapper.circuit.common,
             )?;
             buffer.write_verifier_only_circuit_data(&wrapper.circuit.verifier_only)?;
             buffer.write_target_proof_with_public_inputs(&wrapper.proof_with_pis_target)?;
