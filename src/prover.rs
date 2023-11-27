@@ -3,6 +3,7 @@ use std::any::type_name;
 use anyhow::{ensure, Result};
 use itertools::Itertools;
 use log::Level;
+use maybe_rayon::*;
 use once_cell::sync::Lazy;
 use plonky2::field::extension::Extendable;
 use plonky2::field::packable::Packable;
@@ -17,7 +18,6 @@ use plonky2::plonk::config::{GenericConfig, GenericHashOut};
 use plonky2::timed;
 use plonky2::util::timing::TimingTree;
 use plonky2::util::transpose;
-use plonky2_maybe_rayon::*;
 use plonky2_util::{log2_ceil, log2_strict};
 
 use crate::all_stark::{AllStark, Table, NUM_TABLES};
@@ -49,16 +49,16 @@ pub fn prove<F, C, const D: usize>(
     patricia_input: PatriciaInputs,
     timing: &mut TimingTree,
 ) -> Result<AllProof<F, C, D>>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
-        [(); ArithmeticStark::<F, D>::COLUMNS]:,
-        [(); KeccakStark::<F, D>::COLUMNS]:,
-        [(); KeccakSpongeStark::<F, D>::COLUMNS]:,
-        [(); LogicStark::<F, D>::COLUMNS]:,
-        [(); DataStark::<F, D>::COLUMNS]:,
-        [(); SumStark::<F, D>::COLUMNS]:,
-        [(); SearchStark::<F, D>::COLUMNS]:,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    [(); ArithmeticStark::<F, D>::COLUMNS]:,
+    [(); KeccakStark::<F, D>::COLUMNS]:,
+    [(); KeccakSpongeStark::<F, D>::COLUMNS]:,
+    [(); LogicStark::<F, D>::COLUMNS]:,
+    [(); DataStark::<F, D>::COLUMNS]:,
+    [(); SumStark::<F, D>::COLUMNS]:,
+    [(); SearchStark::<F, D>::COLUMNS]:,
 {
     let (traces, public_values) = timed!(
         timing,
@@ -77,16 +77,16 @@ pub(crate) fn prove_with_traces<F, C, const D: usize>(
     public_values: PublicValues,
     timing: &mut TimingTree,
 ) -> Result<AllProof<F, C, D>>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
-        [(); ArithmeticStark::<F, D>::COLUMNS]:,
-        [(); KeccakStark::<F, D>::COLUMNS]:,
-        [(); KeccakSpongeStark::<F, D>::COLUMNS]:,
-        [(); LogicStark::<F, D>::COLUMNS]:,
-        [(); DataStark::<F, D>::COLUMNS]:,
-        [(); SumStark::<F, D>::COLUMNS]:,
-        [(); SearchStark::<F, D>::COLUMNS]:,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    [(); ArithmeticStark::<F, D>::COLUMNS]:,
+    [(); KeccakStark::<F, D>::COLUMNS]:,
+    [(); KeccakSpongeStark::<F, D>::COLUMNS]:,
+    [(); LogicStark::<F, D>::COLUMNS]:,
+    [(); DataStark::<F, D>::COLUMNS]:,
+    [(); SumStark::<F, D>::COLUMNS]:,
+    [(); SearchStark::<F, D>::COLUMNS]:,
 {
     let rate_bits = config.fri_config.rate_bits;
     let cap_height = config.fri_config.cap_height;
@@ -166,16 +166,16 @@ fn prove_with_commitments<F, C, const D: usize>(
     challenger: &mut Challenger<F, C::Hasher>,
     timing: &mut TimingTree,
 ) -> Result<[StarkProofWithMetadata<F, C, D>; NUM_TABLES]>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
-        [(); ArithmeticStark::<F, D>::COLUMNS]:,
-        [(); KeccakStark::<F, D>::COLUMNS]:,
-        [(); KeccakSpongeStark::<F, D>::COLUMNS]:,
-        [(); LogicStark::<F, D>::COLUMNS]:,
-        [(); DataStark::<F, D>::COLUMNS]:,
-        [(); SumStark::<F, D>::COLUMNS]:,
-        [(); SearchStark::<F, D>::COLUMNS]:,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    [(); ArithmeticStark::<F, D>::COLUMNS]:,
+    [(); KeccakStark::<F, D>::COLUMNS]:,
+    [(); KeccakSpongeStark::<F, D>::COLUMNS]:,
+    [(); LogicStark::<F, D>::COLUMNS]:,
+    [(); DataStark::<F, D>::COLUMNS]:,
+    [(); SumStark::<F, D>::COLUMNS]:,
+    [(); SearchStark::<F, D>::COLUMNS]:,
 {
     let prove_stark = TimingTree::new("prove Arithmetic STARK", Level::Info);
     let arithmetic_proof = timed!(
@@ -265,7 +265,8 @@ fn prove_with_commitments<F, C, const D: usize>(
             &ctl_data_per_table[Table::Sum as usize],
             challenger,
             timing,
-        )?);
+        )?
+    );
     prove_stark.print();
     let prove_stark = TimingTree::new("prove search STARK", Level::Info);
     let search_proof = timed!(
@@ -303,11 +304,11 @@ pub(crate) fn prove_single_table<F, C, S, const D: usize>(
     challenger: &mut Challenger<F, C::Hasher>,
     timing: &mut TimingTree,
 ) -> Result<StarkProofWithMetadata<F, C, D>>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
-        S: Stark<F, D>,
-        [(); S::COLUMNS]:,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    S: Stark<F, D>,
+    [(); S::COLUMNS]:,
 {
     let degree = trace_poly_values[0].len();
     let degree_bits = log2_strict(degree);
@@ -364,7 +365,8 @@ pub(crate) fn prove_single_table<F, C, S, const D: usize>(
     challenger.observe_cap(&permutation_ctl_zs_cap);
 
     let alphas = challenger.get_n_challenges(config.num_challenges);
-    if true {//cfg!(test) {
+    if true {
+        //cfg!(test) {
         check_constraints(
             stark,
             trace_commitment,
@@ -488,12 +490,12 @@ fn compute_quotient_polys<'a, F, P, C, S, const D: usize>(
     num_permutation_zs: usize,
     config: &StarkConfig,
 ) -> Vec<PolynomialCoeffs<F>>
-    where
-        F: RichField + Extendable<D>,
-        P: PackedField<Scalar = F>,
-        C: GenericConfig<D, F = F>,
-        S: Stark<F, D>,
-        [(); S::COLUMNS]:,
+where
+    F: RichField + Extendable<D>,
+    P: PackedField<Scalar = F>,
+    C: GenericConfig<D, F = F>,
+    S: Stark<F, D>,
+    [(); S::COLUMNS]:,
 {
     let degree = 1 << degree_bits;
     let rate_bits = config.fri_config.rate_bits;

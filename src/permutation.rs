@@ -3,6 +3,7 @@
 use std::fmt::Debug;
 
 use itertools::Itertools;
+use maybe_rayon::*;
 use plonky2::field::batch_util::batch_multiply_inplace;
 use plonky2::field::extension::{Extendable, FieldExtension};
 use plonky2::field::packed::PackedField;
@@ -19,7 +20,6 @@ use plonky2::plonk::plonk_common::{
 };
 use plonky2::util::reducing::{ReducingFactor, ReducingFactorTarget};
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
-use plonky2_maybe_rayon::*;
 
 use crate::config::StarkConfig;
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};

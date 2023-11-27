@@ -17,7 +17,7 @@ eth_trie_utils = "0.6.0"
 ethereum-types = "0.14.0"
 hex = { version = "0.4.3"}
 #hex-literal = "0.4.1"
-itertools = "0.11.0"
+itertools = "0.10.0"
 keccak-hash = "0.10.0"
 log = "0.4.14"
 # plonky2_maybe_rayon = "0.1.1"
@@ -49,9 +49,9 @@ futures-util = "0.3.28"
 jemallocator = "0.5.0"
 
 poseidon-permutation = { path = "../circom/poseidon-permutation-rs"}
-plonky2 = { path = "../plonky2-4cb0b48-dao/plonky2"}
-plonky2_util = { path = "../plonky2-4cb0b48-dao/util"}
-plonky2_maybe_rayon = { path = "../plonky2-4cb0b48-dao/maybe_rayon"}
+plonky2 = { path = "../plonky2_for_volume/plonky2-f3f3641fb5fad15795b9bd2cc57870f1b6b20b69/plonky2"}
+plonky2_util = { path = "../plonky2_for_volume/plonky2-f3f3641fb5fad15795b9bd2cc57870f1b6b20b69/util"}
+maybe_rayon = { path = "../plonky2_for_volume/plonky2-f3f3641fb5fad15795b9bd2cc57870f1b6b20b69/maybe_rayon"}
 
 [dev-dependencies]
 criterion = "0.5.1"
@@ -62,7 +62,7 @@ sha2 = "0.10.6"
 [features]
 default = ["parallel"]
 #asmtools = ["hex"]
-parallel = ["plonky2/parallel", "plonky2_maybe_rayon/parallel"]
+parallel = ["plonky2/parallel", "maybe_rayon/parallel"]
 
 [[bin]]
 name = "assemble"

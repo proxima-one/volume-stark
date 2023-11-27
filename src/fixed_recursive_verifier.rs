@@ -1,7 +1,4 @@
 use core::mem::{self, MaybeUninit};
-use std::collections::BTreeMap;
-use std::fmt::Debug;
-use std::ops::Range;
 use itertools::{zip_eq, Itertools};
 use log::info;
 use plonky2::field::extension::Extendable;
@@ -12,9 +9,7 @@ use plonky2::iop::challenger::RecursiveChallenger;
 use plonky2::iop::target::{BoolTarget, Target};
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
-use plonky2::plonk::circuit_data::{
-    CircuitConfig, CircuitData, VerifierCircuitTarget,
-};
+use plonky2::plonk::circuit_data::{CircuitConfig, CircuitData, VerifierCircuitTarget};
 use plonky2::plonk::config::{AlgebraicHasher, GenericConfig};
 use plonky2::plonk::proof::{ProofWithPublicInputs, ProofWithPublicInputsTarget};
 use plonky2::recursion::cyclic_recursion::check_cyclic_proof_verifier_data;
@@ -23,6 +18,9 @@ use plonky2::util::serialization::{
 };
 use plonky2::util::timing::TimingTree;
 use plonky2_util::log2_ceil;
+use std::collections::BTreeMap;
+use std::fmt::Debug;
+use std::ops::Range;
 
 use crate::all_stark::{all_cross_table_lookups, AllStark, Table, NUM_TABLES};
 use crate::arithmetic::arithmetic_stark::ArithmeticStark;
@@ -39,16 +37,22 @@ use crate::permutation::{
 };
 use crate::proof::{
     // BlockMetadataTarget,
-    PublicValues, PublicValuesTarget, StarkProofWithMetadata,
+    PublicValues,
+    PublicValuesTarget,
+    StarkProofWithMetadata,
     // TrieRootsTarget,
 };
 use crate::prover::prove;
 use crate::recursive_verifier::{
-    add_common_recursion_gates, add_virtual_public_values, recursive_stark_circuit,
+    add_common_recursion_gates,
+    add_virtual_public_values,
+    recursive_stark_circuit,
     // set_block_metadata_target,
     set_public_value_targets,
     // set_trie_roots_target,
-    PlonkWrapperCircuit, PublicInputs, StarkWrapperCircuit,
+    PlonkWrapperCircuit,
+    PublicInputs,
+    StarkWrapperCircuit,
 };
 use crate::search_substring::search_stark::SearchStark;
 use crate::stark::Stark;
@@ -64,10 +68,10 @@ const THRESHOLD_DEGREE_BITS: usize = 13;
 /// for combining each STARK's shrunk wrapper proof into a single proof.
 #[derive(Eq, PartialEq, Debug)]
 pub struct AllRecursiveCircuits<F, C, const D: usize>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
-        C::Hasher: AlgebraicHasher<F>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    C::Hasher: AlgebraicHasher<F>,
 {
     /// The EVM root circuit, which aggregates the (shrunk) per-table recursive proofs.
     pub root: RootCircuitData<F, C, D>,
@@ -80,9 +84,9 @@ pub struct AllRecursiveCircuits<F, C, const D: usize>
 /// into a single proof.
 #[derive(Eq, PartialEq, Debug)]
 pub struct RootCircuitData<F, C, const D: usize>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
 {
     pub circuit: CircuitData<F, C, D>,
     proof_with_pis: [ProofWithPublicInputsTarget<D>; NUM_TABLES],
@@ -97,9 +101,9 @@ pub struct RootCircuitData<F, C, const D: usize>
 }
 
 impl<F, C, const D: usize> RootCircuitData<F, C, D>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
 {
     pub fn to_buffer(
         &self,
@@ -150,9 +154,9 @@ impl<F, C, const D: usize> RootCircuitData<F, C, D>
 /// proof can be either an EVM root proof or another aggregation proof.
 #[derive(Eq, PartialEq, Debug)]
 pub struct AggregationCircuitData<F, C, const D: usize>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
 {
     pub circuit: CircuitData<F, C, D>,
     lhs: AggregationChildTarget<D>,
@@ -162,9 +166,9 @@ pub struct AggregationCircuitData<F, C, const D: usize>
 }
 
 impl<F, C, const D: usize> AggregationCircuitData<F, C, D>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
 {
     pub fn to_buffer(
         &self,
@@ -236,19 +240,18 @@ impl<const D: usize> AggregationChildTarget<D> {
     }
 }
 
-
 impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F> + 'static,
-        C::Hasher: AlgebraicHasher<F>,
-        [(); ArithmeticStark::<F, D>::COLUMNS]:,
-        [(); KeccakStark::<F, D>::COLUMNS]:,
-        [(); KeccakSpongeStark::<F, D>::COLUMNS]:,
-        [(); LogicStark::<F, D>::COLUMNS]:,
-        [(); DataStark::<F, D>::COLUMNS]:,
-        [(); SumStark::<F, D>::COLUMNS]:,
-        [(); SearchStark::<F, D>::COLUMNS]:,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F> + 'static,
+    C::Hasher: AlgebraicHasher<F>,
+    [(); ArithmeticStark::<F, D>::COLUMNS]:,
+    [(); KeccakStark::<F, D>::COLUMNS]:,
+    [(); KeccakSpongeStark::<F, D>::COLUMNS]:,
+    [(); LogicStark::<F, D>::COLUMNS]:,
+    [(); DataStark::<F, D>::COLUMNS]:,
+    [(); SumStark::<F, D>::COLUMNS]:,
+    [(); SearchStark::<F, D>::COLUMNS]:,
 {
     pub fn to_bytes(
         &self,
@@ -438,11 +441,13 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
             vec![vec![builder.constant(F::ONE); stark_config.num_challenges]; NUM_TABLES - 3]; // LOOK HERE
         extra_looking_products.push(Vec::new());
         for c in 0..stark_config.num_challenges {
-            extra_looking_products[Table::Data as usize].push(Self::get_data_extra_looking_products_circuit(
-                &mut builder,
-                &public_values,
-                ctl_challenges.challenges[c],
-            ));
+            extra_looking_products[Table::Data as usize].push(
+                Self::get_data_extra_looking_products_circuit(
+                    &mut builder,
+                    &public_values,
+                    ctl_challenges.challenges[c],
+                ),
+            );
         }
         extra_looking_products.push(Vec::new());
         for c in 0..stark_config.num_challenges {
@@ -512,7 +517,7 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
         public_values: &PublicValuesTarget,
         challenge: GrandProductChallenge<Target>,
     ) -> Target {
-        const VALUE_LIMBS : usize = 8;
+        const VALUE_LIMBS: usize = 8;
         let mut prod = builder.constant(F::ONE);
         let row = builder.add_virtual_targets(VALUE_LIMBS);
         for j in 0..VALUE_LIMBS {
@@ -591,7 +596,6 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
         }
     }
 
-
     /// Create a proof for each STARK, then combine them, eventually culminating in a root proof.
     pub fn prove_root(
         &self,
@@ -602,7 +606,13 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
         timing: &mut TimingTree,
     ) -> anyhow::Result<(ProofWithPublicInputs<F, C, D>, PublicValues)> {
         let mut timing_all_proof = TimingTree::new("ALL PROOF prove", log::Level::Info);
-        let all_proof = prove::<F, C, D>(all_stark, config, generation_inputs, patricia_inputs, timing)?;
+        let all_proof = prove::<F, C, D>(
+            all_stark,
+            config,
+            generation_inputs,
+            patricia_inputs,
+            timing,
+        )?;
         timing_all_proof.print();
         for proof in &all_proof.stark_proofs {
             let t = format!("{:?}", proof.proof);
@@ -680,20 +690,19 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
             &self.aggregation.circuit.verifier_only,
         );
 
-        set_public_value_targets(&mut agg_inputs, &self.aggregation.public_values, &public_values);
+        set_public_value_targets(
+            &mut agg_inputs,
+            &self.aggregation.public_values,
+            &public_values,
+        );
 
         let aggregation_result = self.aggregation.circuit.prove(agg_inputs);
 
         match aggregation_result {
-            Ok(aggregation_proof) => {
-                Ok((aggregation_proof, public_values))
-            }
-           _ => {
-                Err("Proof generation failed".to_string())
-            }
+            Ok(aggregation_proof) => Ok((aggregation_proof, public_values)),
+            _ => Err("Proof generation failed".to_string()),
         }
     }
-
 
     pub fn verify_aggregation(
         &self,
@@ -710,10 +719,10 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
 
 #[derive(Eq, PartialEq, Debug)]
 pub struct RecursiveCircuitsForTable<F, C, const D: usize>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
-        C::Hasher: AlgebraicHasher<F>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    C::Hasher: AlgebraicHasher<F>,
 {
     /// A map from `log_2(height)` to a chain of shrinking recursion circuits starting at that
     /// height.
@@ -721,10 +730,10 @@ pub struct RecursiveCircuitsForTable<F, C, const D: usize>
 }
 
 impl<F, C, const D: usize> RecursiveCircuitsForTable<F, C, D>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
-        C::Hasher: AlgebraicHasher<F>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    C::Hasher: AlgebraicHasher<F>,
 {
     pub fn to_buffer(
         &self,
@@ -766,8 +775,8 @@ impl<F, C, const D: usize> RecursiveCircuitsForTable<F, C, D>
         all_ctls: &[CrossTableLookup<F>],
         stark_config: &StarkConfig,
     ) -> Self
-        where
-            [(); S::COLUMNS]:,
+    where
+        [(); S::COLUMNS]:,
     {
         let by_stark_size = degree_bits_range
             .map(|degree_bits| {
@@ -806,20 +815,20 @@ impl<F, C, const D: usize> RecursiveCircuitsForTable<F, C, D>
 /// `THRESHOLD_DEGREE_BITS`.
 #[derive(Eq, PartialEq, Debug)]
 struct RecursiveCircuitsForTableSize<F, C, const D: usize>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
-        C::Hasher: AlgebraicHasher<F>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    C::Hasher: AlgebraicHasher<F>,
 {
     initial_wrapper: StarkWrapperCircuit<F, C, D>,
     shrinking_wrappers: Vec<PlonkWrapperCircuit<F, C, D>>,
 }
 
 impl<F, C, const D: usize> RecursiveCircuitsForTableSize<F, C, D>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F>,
-        C::Hasher: AlgebraicHasher<F>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
+    C::Hasher: AlgebraicHasher<F>,
 {
     pub fn to_buffer(
         &self,
@@ -890,8 +899,8 @@ impl<F, C, const D: usize> RecursiveCircuitsForTableSize<F, C, D>
         all_ctls: &[CrossTableLookup<F>],
         stark_config: &StarkConfig,
     ) -> Self
-        where
-            [(); S::COLUMNS]:,
+    where
+        [(); S::COLUMNS]:,
     {
         let initial_wrapper = recursive_stark_circuit(
             table,

@@ -1,6 +1,7 @@
 use ethereum_types::{Address, H256, U256};
 use itertools::Itertools;
 use log::info;
+use maybe_rayon::*;
 use plonky2::field::extension::{Extendable, FieldExtension};
 use plonky2::fri::oracle::PolynomialBatch;
 use plonky2::fri::proof::{FriChallenges, FriChallengesTarget, FriProof, FriProofTarget};
@@ -10,12 +11,11 @@ use plonky2::fri::structure::{
 use plonky2::hash::hash_types::{MerkleCapTarget, RichField};
 use plonky2::hash::merkle_tree::MerkleCap;
 use plonky2::iop::ext_target::ExtensionTarget;
-use plonky2::iop::target::{BoolTarget, Target};
 use plonky2::iop::target::Target::VirtualTarget;
+use plonky2::iop::target::{BoolTarget, Target};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::config::{GenericConfig, Hasher};
 use plonky2::util::serialization::{Buffer, IoResult, Read, Write};
-use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
 use crate::all_stark::NUM_TABLES;
@@ -24,13 +24,13 @@ use crate::permutation::GrandProductChallengeSet;
 
 /// A STARK proof for each table, plus some metadata used to create recursive wrapper proofs.
 #[derive(Debug, Clone)]
-pub struct AllProof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, const D: usize> {
+pub struct AllProof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize> {
     pub stark_proofs: [StarkProofWithMetadata<F, C, D>; NUM_TABLES],
     pub(crate) ctl_challenges: GrandProductChallengeSet<F>,
     pub public_values: PublicValues,
 }
 
-impl<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, const D: usize> AllProof<F, C, D> {
+impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize> AllProof<F, C, D> {
     pub fn degree_bits(&self, config: &StarkConfig) -> [usize; NUM_TABLES] {
         core::array::from_fn(|i| self.stark_proofs[i].proof.recover_degree_bits(config))
     }
@@ -57,7 +57,6 @@ pub struct PublicValues {
     // parent block hash
     pub ending_blockhash: H256,
 }
-
 
 /// Memory values which are public.
 /// Note: All the larger integers are encoded with 32-bit limbs in little-endian order.
@@ -96,7 +95,11 @@ impl PublicValuesTarget {
                 builder.select(condition, tr0.total_sum[i], tr1.total_sum[i])
             }),
             starting_blockhash: core::array::from_fn(|i| {
-                builder.select(condition, tr0.starting_blockhash[i], tr1.starting_blockhash[i])
+                builder.select(
+                    condition,
+                    tr0.starting_blockhash[i],
+                    tr1.starting_blockhash[i],
+                )
             }),
             ending_blockhash: core::array::from_fn(|i| {
                 builder.select(condition, tr0.ending_blockhash[i], tr1.ending_blockhash[i])
@@ -122,7 +125,7 @@ impl PublicValuesTarget {
         front: Self,
         back: Self,
         root: Self,
-    ){
+    ) {
         let mut first_volume_bits = vec![];
         let mut second_volume_bits = vec![];
         let mut total_volume_bits = vec![];
@@ -145,7 +148,8 @@ impl PublicValuesTarget {
             let carry_target = &mut carry_list[carry_index];
 
             // Computes the sum without carry: b1 ^ b2 ^ carry
-            let first_bits_addition = Self::bits_xor(builder, first_volume_bits[i], second_volume_bits[i]);
+            let first_bits_addition =
+                Self::bits_xor(builder, first_volume_bits[i], second_volume_bits[i]);
             let sum_bits = Self::bits_xor(builder, first_bits_addition.clone(), *carry_target);
 
             // Use bitwise AND, XOR, OR to compute the carry: (b1 & b2) | (carry & (b1 ^ b2))
@@ -180,9 +184,8 @@ impl PublicValuesTarget {
     }
 }
 
-
 #[derive(Debug, Clone)]
-pub struct StarkProof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, const D: usize> {
+pub struct StarkProof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize> {
     /// Merkle cap of LDEs of trace values.
     pub trace_cap: MerkleCap<F, C::Hasher>,
     /// Merkle cap of LDEs of permutation Z values.
@@ -199,16 +202,16 @@ pub struct StarkProof<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, co
 /// creating a recursive wrapper proof around a STARK proof.
 #[derive(Debug, Clone)]
 pub struct StarkProofWithMetadata<F, C, const D: usize>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F=F>,
+where
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F = F>,
 {
     pub(crate) init_challenger_state: <C::Hasher as Hasher<F>>::Permutation,
     // TODO: set it back to pub(crate) when cpu trace len is a public input
     pub proof: StarkProof<F, C, D>,
 }
 
-impl<F: RichField + Extendable<D>, C: GenericConfig<D, F=F>, const D: usize> StarkProof<F, C, D> {
+impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize> StarkProof<F, C, D> {
     /// Recover the length of the trace from a STARK proof and a STARK config.
     pub fn recover_degree_bits(&self, config: &StarkConfig) -> usize {
         let initial_merkle_proof = &self.opening_proof.query_round_proofs[0]
@@ -308,7 +311,7 @@ pub struct StarkOpeningSet<F: RichField + Extendable<D>, const D: usize> {
 }
 
 impl<F: RichField + Extendable<D>, const D: usize> StarkOpeningSet<F, D> {
-    pub fn new<C: GenericConfig<D, F=F>>(
+    pub fn new<C: GenericConfig<D, F = F>>(
         zeta: F::Extension,
         g: F,
         trace_commitment: &PolynomialBatch<F, C, D>,
