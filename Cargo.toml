@@ -48,10 +48,10 @@ futures-util = "0.3.28"
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 jemallocator = "0.5.0"
 
-poseidon-permutation = { path = "../circom/poseidon-permutation-rs"}
-plonky2 = { path = "../plonky2_for_volume/plonky2-f3f3641fb5fad15795b9bd2cc57870f1b6b20b69/plonky2"}
-plonky2_util = { path = "../plonky2_for_volume/plonky2-f3f3641fb5fad15795b9bd2cc57870f1b6b20b69/util"}
-maybe_rayon = { path = "../plonky2_for_volume/plonky2-f3f3641fb5fad15795b9bd2cc57870f1b6b20b69/maybe_rayon"}
+poseidon-permutation = { path = "../poseidon-permutation-rs"}
+plonky2 = { path = "../plonky2-f3f3641fb5fad15795b9bd2cc57870f1b6b20b69/plonky2"}
+plonky2_util = { path = "../plonky2-f3f3641fb5fad15795b9bd2cc57870f1b6b20b69/util"}
+maybe_rayon = { path = "../plonky2-f3f3641fb5fad15795b9bd2cc57870f1b6b20b69/maybe_rayon"}
 
 [dev-dependencies]
 criterion = "0.5.1"
