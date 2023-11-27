@@ -120,7 +120,7 @@ where
         .iter()
         .map(|c| c.merkle_tree.cap.clone())
         .collect::<Vec<_>>();
-    let mut challenger = Challenger::<F, C::Hasher, H>::new();
+    let mut challenger = Challenger::<F, C::HCO, C::Hasher>::new();
     for cap in &trace_caps {
         challenger.observe_cap(cap);
     }
@@ -163,19 +163,20 @@ fn prove_with_commitments<F, C, const D: usize>(
     trace_poly_values: [Vec<PolynomialValues<F>>; NUM_TABLES],
     trace_commitments: Vec<PolynomialBatch<F, C, D>>,
     ctl_data_per_table: [CtlData<F>; NUM_TABLES],
-    challenger: &mut Challenger<F, C::Hasher, H>,
+    challenger: &mut Challenger<F, C::HCO, C::Hasher>,
     timing: &mut TimingTree,
 ) -> Result<[StarkProofWithMetadata<F, C, D>; NUM_TABLES]>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
-    [(); ArithmeticStark::<F, D>::COLUMNS]:,
+    [(); C::Hasher::HASH_SIZE]:,
+    [(); CpuStark::<F, D>::COLUMNS]:,
     [(); KeccakStark::<F, D>::COLUMNS]:,
     [(); KeccakSpongeStark::<F, D>::COLUMNS]:,
     [(); LogicStark::<F, D>::COLUMNS]:,
-    [(); DataStark::<F, D>::COLUMNS]:,
-    [(); SumStark::<F, D>::COLUMNS]:,
-    [(); SearchStark::<F, D>::COLUMNS]:,
+    [(); MemoryStark::<F, D>::COLUMNS]:,
+    [(); C::HCO::WIDTH]:,
+    [(); C::HCI::WIDTH]:,
 {
     let prove_stark = TimingTree::new("prove Arithmetic STARK", Level::Info);
     let arithmetic_proof = timed!(
@@ -301,7 +302,7 @@ pub(crate) fn prove_single_table<F, C, S, const D: usize>(
     trace_poly_values: &[PolynomialValues<F>],
     trace_commitment: &PolynomialBatch<F, C, D>,
     ctl_data: &CtlData<F>,
-    challenger: &mut Challenger<F, C::Hasher, H>,
+    challenger: &mut Challenger<F, C::HCO, C::Hasher>,
     timing: &mut TimingTree,
 ) -> Result<StarkProofWithMetadata<F, C, D>>
 where
@@ -309,6 +310,8 @@ where
     C: GenericConfig<D, F = F>,
     S: Stark<F, D>,
     [(); S::COLUMNS]:,
+    [(); C::HCO::WIDTH]:,
+    [(); C::HCI::WIDTH]:,
 {
     let degree = trace_poly_values[0].len();
     let degree_bits = log2_strict(degree);

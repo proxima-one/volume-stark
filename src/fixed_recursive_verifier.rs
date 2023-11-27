@@ -71,11 +71,13 @@ pub struct AllRecursiveCircuits<F, C, const D: usize>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
-    C::Hasher: AlgebraicHasher<F, HC>,
+    [(); C::HCO::WIDTH]:,
 {
     /// The EVM root circuit, which aggregates the (shrunk) per-table recursive proofs.
     pub root: RootCircuitData<F, C, D>,
     pub aggregation: AggregationCircuitData<F, C, D>,
+    /// The block circuit, which verifies an aggregation root proof and a previous block proof.
+    pub block: BlockCircuitData<F, C, D>,
     /// Holds chains of circuits for each table and for each initial `degree_bits`.
     by_table: [RecursiveCircuitsForTable<F, C, D>; NUM_TABLES],
 }
@@ -243,6 +245,7 @@ impl<const D: usize> AggregationChildTarget<D> {
 impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
 where
     F: RichField + Extendable<D>,
+    HC: HashConfig,
     C: GenericConfig<D, F = F> + 'static,
     C::Hasher: AlgebraicHasher<F, HC>,
     [(); ArithmeticStark::<F, D>::COLUMNS]:,
@@ -722,7 +725,7 @@ pub struct RecursiveCircuitsForTable<F, C, const D: usize>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
-    C::Hasher: AlgebraicHasher<F, HC>,
+    [(); C::HCO::WIDTH]:,
 {
     /// A map from `log_2(height)` to a chain of shrinking recursion circuits starting at that
     /// height.
@@ -733,7 +736,10 @@ impl<F, C, const D: usize> RecursiveCircuitsForTable<F, C, D>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
-    C::Hasher: AlgebraicHasher<F, HC>,
+    C::Hasher: AlgebraicHasher<F, C::HCO>,
+    [(); C::Hasher::HASH_SIZE]:,
+    [(); C::HCO::WIDTH]:,
+    [(); C::HCI::WIDTH]:,
 {
     pub fn to_buffer(
         &self,
@@ -818,7 +824,7 @@ struct RecursiveCircuitsForTableSize<F, C, const D: usize>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
-    C::Hasher: AlgebraicHasher<F, HC>,
+    [(); C::HCO::WIDTH]:,
 {
     initial_wrapper: StarkWrapperCircuit<F, C, D>,
     shrinking_wrappers: Vec<PlonkWrapperCircuit<F, C, D>>,
@@ -828,7 +834,10 @@ impl<F, C, const D: usize> RecursiveCircuitsForTableSize<F, C, D>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
-    C::Hasher: AlgebraicHasher<F, HC>,
+    C::Hasher: AlgebraicHasher<F, C::HCO>,
+    [(); C::Hasher::HASH_SIZE]:,
+    [(); C::HCO::WIDTH]:,
+    [(); C::HCI::WIDTH]:,
 {
     pub fn to_buffer(
         &self,
@@ -955,20 +964,9 @@ where
         stark_proof_with_metadata: &StarkProofWithMetadata<F, C, D>,
         ctl_challenges: &GrandProductChallengeSet<F>,
     ) -> anyhow::Result<ProofWithPublicInputs<F, C, D>> {
-        let timing_print = TimingTree::new("Just prove table", log::Level::Info);
-        //println!("Proof {:?}", stark_proof_with_metadata.proof);
-        // let mut f;
-        // stark_proof_with_metadata.proof.fmt(&mut f);
-        // let mut data;
-        // f.;
-        // println!("Proof {:?}", data.len());
-        let t = format!("{:?}", stark_proof_with_metadata.proof);
-        println!("Proof {:?}", t.len());
-
         let mut proof = self
             .initial_wrapper
             .prove(stark_proof_with_metadata, ctl_challenges)?;
-        timing_print.print();
         for wrapper_circuit in &self.shrinking_wrappers {
             proof = wrapper_circuit.prove(&proof)?;
         }

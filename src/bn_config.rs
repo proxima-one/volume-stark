@@ -3,7 +3,9 @@ use plonky2::field::extension::Extendable;
 use plonky2::field::goldilocks_field::GoldilocksField;
 
 use plonky2::hash::hash_types::{HashOut, HashOutTarget, RichField};
-use plonky2::hash::hashing::{compress, hash_n_to_hash_no_pad, PlonkyPermutation, SPONGE_WIDTH};
+use plonky2::hash::hashing::{
+    compress, hash_n_to_hash_no_pad, HashConfig, PlonkyPermutation, SPONGE_WIDTH,
+};
 use plonky2::hash::poseidon::PoseidonHash;
 use plonky2::iop::target::{BoolTarget, Target};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
@@ -12,7 +14,7 @@ use poseidon_permutation::bindings::permute;
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub struct PoseidonBN128Permutation;
-impl<F: RichField> PlonkyPermutation<F, HC> for PoseidonBN128Permutation {
+impl<F: RichField, HC: HashConfig> PlonkyPermutation<F, HC> for PoseidonBN128Permutation {
     fn permute(input: [F; SPONGE_WIDTH]) -> [F; SPONGE_WIDTH] {
         assert_eq!(SPONGE_WIDTH, 12);
         unsafe {
@@ -99,7 +101,7 @@ impl<F: RichField> PlonkyPermutation<F, HC> for PoseidonBN128Permutation {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct PoseidonBN128Hash;
-impl<F: RichField> Hasher<F, HC> for PoseidonBN128Hash {
+impl<F: RichField, HC: HashConfig> Hasher<F, HC> for PoseidonBN128Hash {
     const HASH_SIZE: usize = 4 * 8;
     type Hash = HashOut<F>;
     type Permutation = PoseidonBN128Permutation;
@@ -118,7 +120,7 @@ impl<F: RichField> Hasher<F, HC> for PoseidonBN128Hash {
 }
 
 // TODO: this is a work around. Still use Goldilocks based Poseidon for algebraic PoseidonBN128Hash.
-impl<F: RichField> AlgebraicHasher<F, HC> for PoseidonBN128Hash {
+impl<F: RichField, HC: HashConfig> AlgebraicHasher<F, HC> for PoseidonBN128Hash {
     fn permute_swapped<const D: usize>(
         inputs: [Target; SPONGE_WIDTH],
         swap: BoolTarget,

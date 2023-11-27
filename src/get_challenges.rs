@@ -20,7 +20,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize> A
         all_stark: &AllStark<F, D>,
         config: &StarkConfig,
     ) -> AllProofChallenges<F, D> {
-        let mut challenger = Challenger::<F, C::Hasher, H>::new();
+        let mut challenger = Challenger::<F, C::HCO, C::Hasher>::new();
 
         for proof in &self.stark_proofs {
             challenger.observe_cap(&proof.proof.trace_cap);
@@ -53,8 +53,12 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize> A
         &self,
         all_stark: &AllStark<F, D>,
         config: &StarkConfig,
-    ) -> AllChallengerState<F, C::Hasher, D> {
-        let mut challenger = Challenger::<F, C::Hasher, H>::new();
+    ) -> AllChallengerState<F, C::HCO, D>
+    where
+        [(); C::HCO::WIDTH]:,
+        [(); C::HCI::WIDTH]:,
+    {
+        let mut challenger = Challenger::<F, C::HCO, C::Hasher>::new();
 
         for proof in &self.stark_proofs {
             challenger.observe_cap(&proof.proof.trace_cap);
@@ -159,6 +163,7 @@ impl<const D: usize> StarkProofTarget<D> {
         config: &StarkConfig,
     ) -> StarkProofChallengesTarget<D>
     where
+        HC: HashConfig,
         C::Hasher: AlgebraicHasher<F, HC>,
     {
         let StarkProofTarget {

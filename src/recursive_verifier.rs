@@ -172,13 +172,12 @@ pub(crate) struct StarkWrapperCircuit<F, C, const D: usize>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
-    C::Hasher: AlgebraicHasher<F, HC>,
+    [(); C::HCO::WIDTH]:,
 {
     pub(crate) circuit: CircuitData<F, C, D>,
     pub(crate) stark_proof_target: StarkProofTarget<D>,
     pub(crate) ctl_challenges_target: GrandProductChallengeSet<Target>,
-    pub(crate) init_challenger_state_target:
-        <C::Hasher as AlgebraicHasher<F>>::AlgebraicPermutation,
+    pub(crate) init_challenger_state_target: [Target; C::HCO::WIDTH],
     pub(crate) zero_target: Target,
 }
 
@@ -186,7 +185,9 @@ impl<F, C, const D: usize> StarkWrapperCircuit<F, C, D>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
-    C::Hasher: AlgebraicHasher<F, HC>,
+    C::Hasher: AlgebraicHasher<F, C::HCO>,
+    [(); C::HCO::WIDTH]:,
+    [(); C::HCI::WIDTH]:,
 {
     pub fn to_buffer(
         &self,
@@ -195,7 +196,7 @@ where
         generator_serializer: &dyn WitnessGeneratorSerializer<F, D>,
     ) -> IoResult<()> {
         buffer.write_circuit_data(&self.circuit, gate_serializer, generator_serializer)?;
-        buffer.write_target_vec(self.init_challenger_state_target.as_ref())?;
+        buffer.write_target_vec(&self.init_challenger_state_target)?;
         buffer.write_target(self.zero_target)?;
         self.stark_proof_target.to_buffer(buffer)?;
         self.ctl_challenges_target.to_buffer(buffer)?;
@@ -208,11 +209,7 @@ where
         generator_serializer: &dyn WitnessGeneratorSerializer<F, D>,
     ) -> IoResult<Self> {
         let circuit = buffer.read_circuit_data(gate_serializer, generator_serializer)?;
-        let target_vec = buffer.read_target_vec()?;
-        let init_challenger_state_target =
-            <C::Hasher as AlgebraicHasher<F, HC>>::AlgebraicPermutation::new(
-                target_vec.into_iter(),
-            );
+        let init_challenger_state_target = buffer.read_target_vec()?;
         let zero_target = buffer.read_target()?;
         let stark_proof_target = StarkProofTarget::from_buffer(buffer)?;
         let ctl_challenges_target = GrandProductChallengeSet::from_buffer(buffer)?;
@@ -220,7 +217,7 @@ where
             circuit,
             stark_proof_target,
             ctl_challenges_target,
-            init_challenger_state_target,
+            init_challenger_state_target: init_challenger_state_target.try_into().unwrap(),
             zero_target,
         })
     }
@@ -250,8 +247,8 @@ where
         }
 
         inputs.set_target_arr(
-            self.init_challenger_state_target.as_ref(),
-            proof_with_metadata.init_challenger_state.as_ref(),
+            self.init_challenger_state_target,
+            proof_with_metadata.init_challenger_state,
         );
 
         self.circuit.prove(inputs)
@@ -273,7 +270,9 @@ impl<F, C, const D: usize> PlonkWrapperCircuit<F, C, D>
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
-    C::Hasher: AlgebraicHasher<F, HC>,
+    C::Hasher: AlgebraicHasher<F, C::HCO>,
+    [(); C::HCO::WIDTH]:,
+    [(); C::HCI::WIDTH]:,
 {
     pub(crate) fn prove(
         &self,
@@ -302,7 +301,9 @@ pub(crate) fn recursive_stark_circuit<
 ) -> StarkWrapperCircuit<F, C, D>
 where
     [(); S::COLUMNS]:,
-    C::Hasher: AlgebraicHasher<F, HC>,
+    C::Hasher: AlgebraicHasher<F, C::HCO>,
+    [(); C::HCO::WIDTH]:,
+    [(); C::HCI::WIDTH]:,
 {
     let mut builder = CircuitBuilder::<F, D>::new(circuit_config.clone());
     let zero_target = builder.zero();
@@ -339,12 +340,9 @@ where
         num_permutation_zs,
     );
 
-    let init_challenger_state_target =
-        <C::Hasher as AlgebraicHasher<F, HC>>::AlgebraicPermutation::new(std::iter::from_fn(
-            || Some(builder.add_virtual_public_input()),
-        ));
+    let init_challenger_state_target = core::array::from_fn(|_| builder.add_virtual_public_input());
     let mut challenger =
-        RecursiveChallenger::<F, C::Hasher, D>::from_state(init_challenger_state_target);
+        RecursiveChallenger::<F, C::HCO, C::Hasher, D>::from_state(init_challenger_state_target);
     let challenges = proof_target.get_challenges::<F, C>(
         &mut builder,
         &mut challenger,
@@ -353,7 +351,7 @@ where
         inner_config,
     );
     let challenger_state = challenger.compact(&mut builder);
-    builder.register_public_inputs(challenger_state.as_ref());
+    builder.register_public_inputs(&challenger_state);
 
     builder.register_public_inputs(&proof_target.openings.ctl_zs_last);
 
@@ -408,8 +406,9 @@ fn verify_stark_proof_with_challenges_circuit<
     ctl_vars: &[CtlCheckVarsTarget<F, D>],
     inner_config: &StarkConfig,
 ) where
-    C::Hasher: AlgebraicHasher<F, HC>,
+    C::Hasher: AlgebraicHasher<F, C::HCO>,
     [(); S::COLUMNS]:,
+    [(); C::HCO::WIDTH]:,
 {
     let zero = builder.zero();
     let one = builder.one_extension();
@@ -591,7 +590,7 @@ pub(crate) fn set_stark_proof_target<F, C: GenericConfig<D, F = F>, W, const D: 
     zero: Target,
 ) where
     F: RichField + Extendable<D>,
-    C::Hasher: AlgebraicHasher<F, HC>,
+    C::Hasher: AlgebraicHasher<F, C::HCO>,
     W: Witness<F>,
 {
     witness.set_cap_target(&proof_target.trace_cap, &proof.trace_cap);
