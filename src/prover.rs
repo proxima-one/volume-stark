@@ -169,12 +169,13 @@ fn prove_with_commitments<F, C, const D: usize>(
 where
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
-    [(); C::Hasher::HASH_SIZE]:,
-    [(); CpuStark::<F, D>::COLUMNS]:,
+    [(); ArithmeticStark::<F, D>::COLUMNS]:,
     [(); KeccakStark::<F, D>::COLUMNS]:,
     [(); KeccakSpongeStark::<F, D>::COLUMNS]:,
     [(); LogicStark::<F, D>::COLUMNS]:,
-    [(); MemoryStark::<F, D>::COLUMNS]:,
+    [(); DataStark::<F, D>::COLUMNS]:,
+    [(); SumStark::<F, D>::COLUMNS]:,
+    [(); SearchStark::<F, D>::COLUMNS]:,
     [(); C::HCO::WIDTH]:,
     [(); C::HCI::WIDTH]:,
 {
