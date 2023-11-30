@@ -9,6 +9,7 @@ use plonky2::fri::structure::{
     FriOpeningBatch, FriOpeningBatchTarget, FriOpenings, FriOpeningsTarget,
 };
 use plonky2::hash::hash_types::{MerkleCapTarget, RichField};
+use plonky2::hash::hashing::HashConfig;
 use plonky2::hash::merkle_tree::MerkleCap;
 use plonky2::iop::ext_target::ExtensionTarget;
 use plonky2::iop::target::Target::VirtualTarget;

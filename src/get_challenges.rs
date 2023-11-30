@@ -102,7 +102,11 @@ where
         stark_use_permutation: bool,
         stark_permutation_batch_size: usize,
         config: &StarkConfig,
-    ) -> StarkProofChallenges<F, D> {
+    ) -> StarkProofChallenges<F, D>
+    where
+        [(); C::HCO::WIDTH]:,
+        [(); C::HCI::WIDTH]:,
+    {
         let degree_bits = self.recover_degree_bits(config);
 
         let StarkProof {
@@ -163,8 +167,9 @@ impl<const D: usize> StarkProofTarget<D> {
         config: &StarkConfig,
     ) -> StarkProofChallengesTarget<D>
     where
-        HC: HashConfig,
-        C::Hasher: AlgebraicHasher<F, HC>,
+        C::Hasher: AlgebraicHasher<F, C::HCO>,
+        [(); C::HCO::WIDTH]:,
+        [(); C::HCI::WIDTH]:,
     {
         let StarkProofTarget {
             permutation_ctl_zs_cap,

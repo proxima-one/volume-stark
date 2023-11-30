@@ -16,6 +16,7 @@ use plonky2::recursion::cyclic_recursion::check_cyclic_proof_verifier_data;
 use plonky2::util::serialization::{
     Buffer, GateSerializer, IoResult, Read, WitnessGeneratorSerializer, Write,
 };
+
 use plonky2::util::timing::TimingTree;
 use plonky2_util::log2_ceil;
 use std::collections::BTreeMap;
@@ -73,13 +74,11 @@ where
     C: GenericConfig<D, F = F>,
     [(); C::HCO::WIDTH]:,
 {
-    /// The EVM root circuit, which aggregates the (shrunk) per-table recursive proofs.
-    pub root: RootCircuitData<F, C, D>,
-    pub aggregation: AggregationCircuitData<F, C, D>,
-    /// The block circuit, which verifies an aggregation root proof and a previous block proof.
-    pub block: BlockCircuitData<F, C, D>,
-    /// Holds chains of circuits for each table and for each initial `degree_bits`.
-    by_table: [RecursiveCircuitsForTable<F, C, D>; NUM_TABLES],
+     /// The EVM root circuit, which aggregates the (shrunk) per-table recursive proofs.
+     pub root: RootCircuitData<F, C, D>,
+     pub aggregation: AggregationCircuitData<F, C, D>,
+     /// Holds chains of circuits for each table and for each initial `degree_bits`.
+     by_table: [RecursiveCircuitsForTable<F, C, D>; NUM_TABLES],
 }
 
 /// Data for the EVM root circuit, which is used to combine each STARK's shrunk wrapper proof
@@ -244,10 +243,9 @@ impl<const D: usize> AggregationChildTarget<D> {
 
 impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
 where
-    F: RichField + Extendable<D>,
-    HC: HashConfig,
-    C: GenericConfig<D, F = F> + 'static,
-    C::Hasher: AlgebraicHasher<F, HC>,
+F: RichField + Extendable<D>,
+C: GenericConfig<D, F = F> + 'static,
+C::Hasher: AlgebraicHasher<F, C::HCO>,
     [(); ArithmeticStark::<F, D>::COLUMNS]:,
     [(); KeccakStark::<F, D>::COLUMNS]:,
     [(); KeccakSpongeStark::<F, D>::COLUMNS]:,
@@ -255,6 +253,8 @@ where
     [(); DataStark::<F, D>::COLUMNS]:,
     [(); SumStark::<F, D>::COLUMNS]:,
     [(); SearchStark::<F, D>::COLUMNS]:,
+    [(); C::HCO::WIDTH]:,
+    [(); C::HCI::WIDTH]:,
 {
     pub fn to_bytes(
         &self,
@@ -392,7 +392,7 @@ where
         let recursive_proofs =
             core::array::from_fn(|i| builder.add_virtual_proof_with_pis(inner_common_data[i]));
         let pis: [_; NUM_TABLES] = core::array::from_fn(|i| {
-            PublicInputs::<Target, <C::Hasher as AlgebraicHasher<F, HC>>::AlgebraicPermutation>::from_vec(
+            PublicInputs::<Target, C::HCO>::::from_vec(
                 &recursive_proofs[i].public_inputs,
                 stark_config,
             )
