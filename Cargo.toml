@@ -48,7 +48,7 @@ futures-util = "0.3.28"
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 jemallocator = "0.5.0"
 
-poseidon-permutation = { path = "../circom/poseidon-permutation-rs"}
+poseidon-permutation = { path = "../poseidon-permutation-rs"}
 plonky2 = { path = "../plonky2-4cb0b48-dao/plonky2"}
 plonky2_util = { path = "../plonky2-4cb0b48-dao/util"}
 plonky2_maybe_rayon = { path = "../plonky2-4cb0b48-dao/maybe_rayon"}
