@@ -98,7 +98,7 @@ where
     /// Computes all Fiat-Shamir challenges used in the STARK proof.
     pub(crate) fn get_challenges(
         &self,
-        challenger: &mut Challenger<F, C::Hasher, H>,
+        challenger: &mut Challenger<F, C::HCO, C::Hasher>,
         stark_use_permutation: bool,
         stark_permutation_batch_size: usize,
         config: &StarkConfig,
@@ -161,7 +161,7 @@ impl<const D: usize> StarkProofTarget<D> {
     pub(crate) fn get_challenges<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>>(
         &self,
         builder: &mut CircuitBuilder<F, D>,
-        challenger: &mut RecursiveChallenger<F, C::Hasher, D, D>,
+        challenger: &mut RecursiveChallenger<F, C::HCO, C::Hasher, D>,
         stark_use_permutation: bool,
         stark_permutation_batch_size: usize,
         config: &StarkConfig,

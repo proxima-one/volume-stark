@@ -9,6 +9,7 @@ use plonky2::gates::exponentiation::ExponentiationGate;
 use plonky2::gates::gate::GateRef;
 use plonky2::gates::noop::NoopGate;
 use plonky2::hash::hash_types::RichField;
+use plonky2::hash::hashing::HashConfig;
 use plonky2::hash::hashing::PlonkyPermutation;
 use plonky2::iop::challenger::{Challenger, RecursiveChallenger};
 use plonky2::iop::ext_target::ExtensionTarget;
@@ -60,10 +61,10 @@ pub struct RecursiveAllProof<
     pub recursive_proofs: [ProofWithPublicInputs<F, C, D>; NUM_TABLES],
 }
 
-pub(crate) struct PublicInputs<
-    T: Copy + Default + Eq + PartialEq + Debug,
-    P: PlonkyPermutation<T, HC>,
-> {
+pub(crate) struct PublicInputs<T: Copy + Eq + PartialEq + Debug, HC: HashConfig>
+where
+    [(); HC::WIDTH]:,
+{
     pub(crate) trace_cap: Vec<Vec<T>>,
     pub(crate) ctl_zs_last: Vec<T>,
     pub(crate) ctl_challenges: GrandProductChallengeSet<T>,
@@ -71,7 +72,10 @@ pub(crate) struct PublicInputs<
     pub(crate) challenger_state_after: P,
 }
 
-impl<T: Copy + Debug + Default + Eq + PartialEq, P: PlonkyPermutation<T, HC>> PublicInputs<T, P> {
+impl<T: Copy + Eq + PartialEq + Debug, HC: HashConfig> PublicInputs<T, HC>
+where
+    [(); HC::WIDTH]:,
+{
     pub(crate) fn from_vec(v: &[T], config: &StarkConfig) -> Self {
         // TODO: Document magic number 4; probably comes from
         // Ethereum 256 bits = 4 * Goldilocks 64 bits
