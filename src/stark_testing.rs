@@ -87,8 +87,8 @@ pub fn test_stark_circuit_constraints<
 ) -> Result<()>
 where
     [(); S::COLUMNS]:,
-    [(); <C::Hasher as Hasher<F>>::Permutation::WIDTH]:,
-    [(); <C::InnerHasher as Hasher<F>>::Permutation::WIDTH]:,
+    [(); C::Hasher::HASH_SIZE]:,
+    [(); C::InnerHasher::HASH_SIZE]:,
 {
     // Compute native constraint evaluation on random values.
     let vars = StarkEvaluationVars {
