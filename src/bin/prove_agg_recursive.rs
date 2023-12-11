@@ -1,33 +1,31 @@
-use anyhow::Result;
-use env_logger::{try_init_from_env, Env, DEFAULT_FILTER_ENV};
+use std::fs::File;
+use std::path::Path;
+use std::io::{BufRead, BufWriter};
+use std::sync::Arc;
+use std::{env, fs, io};
+use std::io::Write;
+use std::marker::PhantomData;
 use ethereum_types::H256;
 use ethereum_types::U256;
 use itertools::Itertools;
+use plonky2::field::goldilocks_field::GoldilocksField;
+use plonky2::fri::FriParams;
+use plonky2::plonk::circuit_data::CommonCircuitData;
+use plonky2::plonk::config::PoseidonGoldilocksConfig;
+use anyhow::Result;
+use env_logger::{DEFAULT_FILTER_ENV, Env, try_init_from_env};
 use log::{error, info};
+use plonky2::plonk::proof::ProofWithPublicInputs;
+use plonky2::util::serialization::{DefaultGateSerializer, DefaultGeneratorSerializer};
+use plonky2::util::timing::TimingTree;
+use maru_volume_stark::proof::PublicValues;
+use serde::{Deserialize, Serialize};
 use maru_volume_stark::all_stark::AllStark;
 use maru_volume_stark::circom_verifier::{generate_proof_base64, generate_verifier_config};
 use maru_volume_stark::config::StarkConfig;
 use maru_volume_stark::fixed_recursive_verifier::AllRecursiveCircuits;
-use maru_volume_stark::generation::PatriciaInputs;
+use maru_volume_stark::generation::{ PatriciaInputs};
 use maru_volume_stark::patricia_merkle_trie::read_paths_from_file;
-use maru_volume_stark::proof::PublicValues;
-use plonky2::field::goldilocks_field::GoldilocksField;
-use plonky2::fri::FriParams;
-use plonky2::plonk::circuit_data::CircuitData;
-use plonky2::plonk::circuit_data::CommonCircuitData;
-use plonky2::plonk::config::PoseidonGoldilocksConfig;
-use plonky2::plonk::proof::ProofWithPublicInputs;
-use plonky2::plonk::proof::ProofWithPublicInputsTarget;
-use plonky2::util::serialization::{DefaultGateSerializer, DefaultGeneratorSerializer};
-use plonky2::util::timing::TimingTree;
-use serde::{Deserialize, Serialize};
-use std::fs::File;
-use std::io::Write;
-use std::io::{BufRead, BufWriter};
-use std::marker::PhantomData;
-use std::path::Path;
-use std::sync::Arc;
-use std::{env, fs, io};
 type F = GoldilocksField;
 
 const D: usize = 2;
@@ -40,12 +38,13 @@ pub struct ConfigJson {
     pub degree_bits: String,
 }
 
+
 pub fn generate_agg_proof(
     recursive_circuit: &AllRecursiveCircuits<GoldilocksField, C, 2>,
     first_proof_path: &str,
     second_proof_path: &str,
-    resulting_proof_path: &str,
-) -> Result<(CircuitData<F, C, D>, ProofWithPublicInputs<F, C, D>)> {
+    resulting_proof_path: &str
+) -> Result<()> {
     let mut first_proof_data = fs::read(first_proof_path).expect("File not found");
     let mut second_proof_data = fs::read(second_proof_path).expect("File not found");
 
@@ -61,33 +60,22 @@ pub fn generate_agg_proof(
         ..recursive_circuit.root.circuit.common.clone()
     };
 
+
     let mut timing = TimingTree::new("Proof aggregation", log::Level::Error);
-    let first_proof: ProofWithPublicInputs<GoldilocksField, C, 2> =
-        ProofWithPublicInputs::from_bytes(first_proof_data, &common_data)
-            .expect("Error loading proof data");
-    let second_proof: ProofWithPublicInputs<GoldilocksField, C, 2> =
-        ProofWithPublicInputs::from_bytes(second_proof_data, &common_data)
-            .expect("Error loading proof data");
+    let first_proof: ProofWithPublicInputs<GoldilocksField, C, 2> = ProofWithPublicInputs::from_bytes(first_proof_data, &common_data)
+        .expect("Error loading proof data");
+    let second_proof: ProofWithPublicInputs<GoldilocksField, C, 2> = ProofWithPublicInputs::from_bytes(second_proof_data, &common_data)
+        .expect("Error loading proof data");
 
     // recursive_circuit.verify_root(first_proof.clone())?;
     // recursive_circuit.verify_root(second_proof.clone())?;
 
-    let pi_1 = first_proof
-        .public_inputs
-        .iter()
-        .take(24)
-        .map(|x| x.0.to_le_bytes()[0..4].to_vec())
-        .concat();
+    let pi_1 = first_proof.public_inputs.iter().take(24).map(|x| x.0.to_le_bytes()[0..4].to_vec()).concat();
     let starting_sum = U256::from_little_endian(&pi_1[0..32]);
     let mut starting_blockhash = H256::from_slice(&pi_1[32..64]);
     starting_blockhash.0.reverse();
 
-    let pi_2 = second_proof
-        .public_inputs
-        .iter()
-        .take(24)
-        .map(|x| x.0.to_le_bytes()[0..4].to_vec())
-        .concat();
+    let pi_2 = second_proof.public_inputs.iter().take(24).map(|x| x.0.to_le_bytes()[0..4].to_vec()).concat();
     let ending_sum = U256::from_little_endian(&pi_2[0..32]);
     let mut ending_blockhash = H256::from_slice(&pi_2[64..96]);
     let total_sum = starting_sum + ending_sum;
@@ -95,13 +83,17 @@ pub fn generate_agg_proof(
     let pv = PublicValues {
         total_sum,
         starting_blockhash,
-        ending_blockhash,
+        ending_blockhash
     };
-    let agg_proof = recursive_circuit
-        .prove_aggregation(lhs_is_agg, &first_proof, rhs_is_agg, &second_proof, pv)
-        .unwrap();
-    timing.print();
+    let agg_proof = recursive_circuit.prove_aggregation(
+        lhs_is_agg,
+        &first_proof,
+        rhs_is_agg,
+        &second_proof,
+        pv
 
+    ).unwrap();
+    timing.print();
     let mut actual_proof = agg_proof.0.to_bytes();
     info!("Public values: {:?}", agg_proof.1);
     actual_proof.push(1u8);
@@ -117,7 +109,7 @@ pub fn generate_agg_proof(
     let mut writer = BufWriter::new(hex_input_file);
     serde_json::to_writer(&mut writer, &agg_proof.1)?;
 
-    Ok((recursive_circuit.aggregation.circuit, agg_proof.0))
+    Ok(())
 }
 
 fn init_logger() {
@@ -125,9 +117,7 @@ fn init_logger() {
 }
 
 fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
-where
-    P: AsRef<Path>,
-{
+    where P: AsRef<Path>, {
     let file = File::open(filename)?;
     Ok(io::BufReader::new(file).lines())
 }
@@ -136,10 +126,7 @@ fn main() -> Result<()> {
     init_logger();
     let args: Vec<String> = env::args().collect();
     if args.len() != 4 {
-        error!(
-            "Usage: {} <circuit_file> <proof_list> <proof_file>",
-            args[0]
-        );
+        error!("Usage: {} <circuit_file> <proof_list> <proof_file>", args[0]);
         std::process::exit(1);
     }
     let circuit_path = &args[1];
@@ -152,28 +139,19 @@ fn main() -> Result<()> {
     let generator_serializer = DefaultGeneratorSerializer {
         _phantom: PhantomData::<C>,
     };
-    let recursive_circuit: AllRecursiveCircuits<GoldilocksField, C, 2> =
-        AllRecursiveCircuits::from_bytes(&binary_data, &gate_serializer, &generator_serializer)
-            .unwrap();
+    let recursive_circuit:  AllRecursiveCircuits<GoldilocksField, C, 2> = AllRecursiveCircuits::from_bytes(
+        &binary_data,
+        &gate_serializer,
+        &generator_serializer,
+    ).unwrap();
     info!("Circuit loaded");
     let temp_proof_file = "tmp.proof";
-    let (mut res_data, mut res_proof): (CircuitData<F, C, D>, ProofWithPublicInputs<F, C, D>);
     if let Ok(mut lines) = read_lines(proof_list) {
         let first_proof_file = lines.next().unwrap()?;
         let second_proof_file = lines.next().unwrap()?;
-        (res_data, res_proof) = generate_agg_proof(
-            &recursive_circuit,
-            &first_proof_file,
-            &second_proof_file,
-            &temp_proof_file,
-        )?;
+        generate_agg_proof(&recursive_circuit, &first_proof_file, &second_proof_file, &temp_proof_file)?;
         for next_proof_file in lines {
-            (res_data, res_proof) = generate_agg_proof(
-                &recursive_circuit,
-                &temp_proof_file,
-                &next_proof_file.unwrap(),
-                &temp_proof_file,
-            )?;
+            generate_agg_proof(&recursive_circuit, &temp_proof_file, &next_proof_file.unwrap(), &temp_proof_file)?;
         }
     } else {
         panic!("Could not read {:?}", proof_list);
@@ -187,34 +165,5 @@ fn main() -> Result<()> {
     std::fs::rename(temp_proof_path, correct_path_name)?;
     std::fs::rename(old_pis_name, correct_pis_name)?;
     info!("OK");
-
-    // circom files
-
-    let conf = generate_verifier_config(&res_proof)?;
-    let proof_json = generate_proof_base64(&res_proof, &conf)?;
-
-    std::fs::create_dir_all("circom/test/data").unwrap();
-    let mut proof_file = File::create("circom/test/data/proof.json")?;
-    proof_file.write_all(serde_json::to_string(&proof_json).unwrap().as_bytes())?;
-    let mut conf_file = File::create("./circom/test/data/conf.json")?;
-    conf_file.write_all(serde_json::to_string(&conf)?.as_ref())?;
-
-    let (circom_constants, circom_gates) = generate_circom_verifier(
-        &conf,
-        &res_data.common,
-        &res_data.verifier_only,
-        proof_json.fri_query_step_v.len(),
-        proof_json.fri_query_step_p.len(),
-    )?;
-
-    if !Path::new("./circom/circuits").is_dir() {
-        std::fs::create_dir("./circom/circuits")?;
-    }
-
-    let mut circom_file = File::create("./circom/circuits/constants.circom")?;
-    circom_file.write_all(circom_constants.as_bytes())?;
-    circom_file = File::create("./circom/circuits/gates.circom")?;
-    circom_file.write_all(circom_gates.as_bytes())?;
-
     Ok(())
 }

@@ -6,25 +6,23 @@
 #![feature(let_chains)]
 #![feature(generic_const_exprs)]
 pub mod all_stark;
+pub mod summation;
 pub mod arithmetic;
 pub mod config;
 pub mod constraint_consumer;
-pub mod summation;
 // pub mod cpu;
 pub mod cross_table_lookup;
 pub mod curve_pairings;
 pub mod extension_tower;
 pub mod fixed_recursive_verifier;
 pub mod generation;
+pub mod search_substring;
 mod get_challenges;
 pub mod keccak;
 pub mod keccak_sponge;
 pub mod logic;
 pub mod lookup;
-pub mod search_substring;
 // pub mod memory;
-pub mod block_header;
-pub mod patricia_merkle_trie;
 pub mod permutation;
 pub mod proof;
 pub mod prover;
@@ -36,10 +34,11 @@ pub mod vanishing_poly;
 pub mod vars;
 pub mod verifier;
 pub mod witness;
+pub mod patricia_merkle_trie;
+pub mod block_header;
 
-pub mod bn_config;
-pub mod circom_verifier;
 pub mod data;
+pub mod circom_verifier;
 
 use eth_trie_utils::partial_trie::HashedPartialTrie;
 // Set up Jemalloc
