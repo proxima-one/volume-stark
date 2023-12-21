@@ -650,7 +650,7 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
         );
         //println!("Partial witness: {:?}", root_inputs);
         let root_proof = self.root.circuit.prove(root_inputs)?;
-        timing_root_proof.print();
+        //timing_all_proof.print();
         Ok((root_proof, all_proof.public_values))
     }
 
