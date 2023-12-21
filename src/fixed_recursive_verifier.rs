@@ -642,7 +642,10 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
             );
             root_inputs.set_proof_with_pis_target(&self.root.proof_with_pis[table], shrunk_proof);
         }
-
+        root_inputs.set_verifier_data_target(
+            &self.root.cyclic_vk,
+            &self.aggregation.circuit.verifier_only,
+        );
         set_public_value_targets(
             &mut root_inputs,
             &self.root.public_values,
