@@ -33,7 +33,7 @@ use crate::generation::{GenerationInputs, PatriciaInputs};
 use crate::keccak::keccak_stark::KeccakStark;
 use crate::keccak_sponge::keccak_sponge_stark::KeccakSpongeStark;
 use crate::logic::LogicStark;
-
+use rayon::prelude::*;
 use crate::permutation::{
     get_grand_product_challenge_set_target, GrandProductChallenge, GrandProductChallengeSet,
 };
@@ -609,9 +609,7 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
             println!("Proof bogus size {:?}", t.len());
         }
         let mut root_inputs = PartialWitness::new();
-        for table in 0..NUM_TABLES {
-            info!("Processint table {table}");
-            let mut timing_print = TimingTree::new("Full prove table", log::Level::Info);
+        let data: Vec<ProofWithPublicInputs<F, C, D>> = (0..NUM_TABLES).into_par_iter().map(|table| {
             let stark_proof = &all_proof.stark_proofs[table];
             let original_degree_bits = stark_proof.proof.recover_degree_bits(config);
             let table_circuits = &self.by_table[table];
@@ -624,25 +622,26 @@ impl<F, C, const D: usize> AllRecursiveCircuits<F, C, D>
                         Table::all()[table],
                         original_degree_bits,
                     ))
-                })?
-                .shrink(stark_proof, &all_proof.ctl_challenges)?;
+                }).unwrap()
+                .shrink(stark_proof, &all_proof.ctl_challenges).unwrap();
+            shrunk_proof
+        }).collect();
+        for table in 0..NUM_TABLES {
+            let stark_proof = &all_proof.stark_proofs[table];
+            let original_degree_bits = stark_proof.proof.recover_degree_bits(config);
+            let table_circuits = &self.by_table[table];
             let index_verifier_data = table_circuits
                 .by_stark_size
                 .keys()
                 .position(|&size| size == original_degree_bits)
                 .unwrap();
+            let shrunk_proof = &data[table];
             root_inputs.set_target(
                 self.root.index_verifier_data[table],
                 F::from_canonical_usize(index_verifier_data),
             );
-            root_inputs.set_proof_with_pis_target(&self.root.proof_with_pis[table], &shrunk_proof);
-            timing_print.print();
+            root_inputs.set_proof_with_pis_target(&self.root.proof_with_pis[table], shrunk_proof);
         }
-        let mut timing_root_proof = TimingTree::new("ROOT PROOF prove", log::Level::Info);
-        root_inputs.set_verifier_data_target(
-            &self.root.cyclic_vk,
-            &self.aggregation.circuit.verifier_only,
-        );
 
         set_public_value_targets(
             &mut root_inputs,
