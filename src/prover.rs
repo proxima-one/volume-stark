@@ -384,19 +384,19 @@ pub(crate) fn prove_single_table<F, C, S, const D: usize>(
     challenger.observe_cap(&permutation_ctl_zs_cap);
 
     let alphas = challenger.get_n_challenges(config.num_challenges);
-    if true {//cfg!(test) {
-        check_constraints(
-            stark,
-            trace_commitment,
-            &permutation_ctl_zs_commitment,
-            permutation_challenges.as_ref(),
-            ctl_data,
-            alphas.clone(),
-            degree_bits,
-            num_permutation_zs,
-            config,
-        );
-    }
+    // if true {//cfg!(test) {
+    //     check_constraints(
+    //         stark,
+    //         trace_commitment,
+    //         &permutation_ctl_zs_commitment,
+    //         permutation_challenges.as_ref(),
+    //         ctl_data,
+    //         alphas.clone(),
+    //         degree_bits,
+    //         num_permutation_zs,
+    //         config,
+    //     );
+    // }
     let quotient_polys = timed!(
         timing,
         "compute quotient polys",

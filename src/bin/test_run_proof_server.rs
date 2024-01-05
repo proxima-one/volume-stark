@@ -95,12 +95,12 @@ async fn main() -> Result<()> {
     }
 
 
-    let url = "http://127.0.0.1:3000/generate_proof".parse::<hyper::Uri>().unwrap();
+    let url = "http://127.0.0.1:8881/generate_proof".parse::<hyper::Uri>().unwrap();
     if url.scheme_str() != Some("http") {
         info!("This test only works with 'http' URLs.");
         return Ok(());
     }
-    let agg_url = "http://127.0.0.1:3000/aggregate".parse::<hyper::Uri>().unwrap();
+    let agg_url = "http://127.0.0.1:8881/aggregate".parse::<hyper::Uri>().unwrap();
     let proof_data_json_first = convert_data_to_json(paths_with_ranges[0], block_names[0].as_str()).expect("Error parsing data to JSON");
     let proof_data_json_second = convert_data_to_json(paths_with_ranges[1], block_names[1].as_str()).expect("Error parsing data to JSON");
 

@@ -34,15 +34,10 @@ use crate::permutation::{
     PermutationCheckDataTarget,
 };
 use crate::proof::{
-    // BlockMetadata,
-    // BlockMetadataTarget,
     PublicValues, PublicValuesTarget, StarkOpeningSetTarget,
     StarkProof, StarkProofChallengesTarget, StarkProofTarget, StarkProofWithMetadata,
-    // TrieRoots,
-    // TrieRootsTarget,
 };
 use crate::stark::Stark;
-use crate::util::u256_limbs;
 use crate::vanishing_poly::eval_vanishing_poly_circuit;
 use crate::vars::StarkEvaluationTargets;
 

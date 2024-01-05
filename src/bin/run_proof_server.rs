@@ -89,12 +89,10 @@ struct JsonRequest {
 fn main() {
     init_logger();
     let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        error!("Usage: {} <circuit_file>", args[0]);
-        std::process::exit(1);
-    }
-    let circuit_path = &args[1];
+    let default_circuit_path = "circuits/demo_v03.circuit".to_string();
+    let circuit_path = args.get(1).unwrap_or(&default_circuit_path);
     let binary_data = fs::read(circuit_path).unwrap();
+    println!("OK");
     let server_http2 = thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -119,7 +117,7 @@ fn construct_error_response(status: StatusCode, error_message: &str) -> Response
 async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     let mut stdout = io::stdout();
 
-    let addr: SocketAddr = ([127, 0, 0, 1], 3000).into();
+    let addr: SocketAddr = ([127, 0, 0, 1], 8881).into();
     let listener = TcpListener::bind(addr).await?;
     let gate_serializer = DefaultGateSerializer;
     let generator_serializer = DefaultGeneratorSerializer {
@@ -132,7 +130,7 @@ async fn http1_server(binary_data: &[u8]) -> Result<(), Box<dyn std::error::Erro
         .await
         .unwrap();
     stdout.flush().await.unwrap();
-
+    println!("Circuit created");
 
     loop {
         let (stream, _) = listener.accept().await?;

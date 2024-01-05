@@ -10,29 +10,20 @@ use plonky2::util::timing::TimingTree;
 
 use crate::all_stark::{AllStark, NUM_TABLES};
 use crate::config::StarkConfig;
-// use crate::cpu::columns::CpuColumnsView;
-use crate::data::columns::DATA_COL_MAP;
 use crate::data::data_stark::DataOp;
 use crate::keccak_sponge::columns::KECCAK_WIDTH_BYTES;
 use crate::keccak_sponge::keccak_sponge_stark::KeccakSpongeOp;
-// use crate::public::PublicOp;
-// use crate::public::PublicOp;
-use crate::util::trace_rows_to_poly_values;
-// use crate::witness::memory::MemoryOp;
 use crate::{arithmetic, keccak, logic};
 use crate::bloom_stark::BloomOp;
-use crate::search_substring::search_stark::columns::HAYSTACK_SIZE;
 use crate::search_substring::search_stark::SearchOp;
 use crate::summation::{ChainResult};
 
 #[derive(Clone, Copy, Debug)]
 pub struct TraceCheckpoint {
     pub(self) arithmetic_len: usize,
-    // pub(self) cpu_len: usize,
     pub(self) keccak_len: usize,
     pub(self) keccak_sponge_len: usize,
     pub(self) logic_len: usize,
-    // pub(self) memory_len: usize,
     pub(self) data_len: usize,
     pub(self) sum_len: usize,
     pub(self) search_len: usize,
@@ -42,9 +33,7 @@ pub struct TraceCheckpoint {
 #[derive(Debug)]
 pub(crate) struct Traces<T: Copy> {
     pub(crate) arithmetic_ops: Vec<arithmetic::Operation>,
-    // pub(crate) cpu: Vec<CpuColumnsView<T>>,
     pub(crate) logic_ops: Vec<logic::Operation>,
-    // pub(crate) memory_ops: Vec<MemoryOp>,
     pub(crate) keccak_inputs: Vec<[u64; keccak::keccak_stark::NUM_INPUTS]>,
     pub(crate) keccak_sponge_ops: Vec<KeccakSpongeOp>,
     pub(crate) data_ops: Vec<DataOp>,
@@ -57,9 +46,7 @@ impl<T: Copy> Traces<T> {
     pub fn new() -> Self {
         Traces {
             arithmetic_ops: vec![],
-            // cpu: vec![],
             logic_ops: vec![],
-            // memory_ops: vec![],
             keccak_inputs: vec![],
             keccak_sponge_ops: vec![],
             data_ops: vec![],

@@ -84,65 +84,6 @@ pub(crate) struct GenerationState<F: Field> {
 }
 
 
-/*
-fn apply_metadata_and_tries_memops<F: RichField + Extendable<D>, const D: usize>(
-    state: &mut GenerationState<F>,
-    inputs: &GenerationInputs,
-) {
-    let metadata = &inputs.block_metadata;
-    let tries = &inputs.tries;
-    let trie_roots_after = &inputs.trie_roots_after;
-    let fields = [
-        (
-            GlobalMetadata::BlockBeneficiary,
-            U256::from_big_endian(&metadata.block_beneficiary.0),
-        ),
-        (GlobalMetadata::BlockTimestamp, metadata.block_timestamp),
-        (GlobalMetadata::BlockNumber, metadata.block_number),
-        (GlobalMetadata::BlockDifficulty, metadata.block_difficulty),
-        (GlobalMetadata::BlockGasLimit, metadata.block_gaslimit),
-        (GlobalMetadata::BlockChainId, metadata.block_chain_id),
-        (GlobalMetadata::BlockBaseFee, metadata.block_base_fee),
-        (
-            GlobalMetadata::StateTrieRootDigestBefore,
-            h2u(tries.state_trie.hash()),
-        ),
-        (
-            GlobalMetadata::TransactionTrieRootDigestBefore,
-            h2u(tries.transactions_trie.hash()),
-        ),
-        (
-            GlobalMetadata::ReceiptTrieRootDigestBefore,
-            h2u(tries.receipts_trie.hash()),
-        ),
-        (
-            GlobalMetadata::StateTrieRootDigestAfter,
-            h2u(trie_roots_after.state_root),
-        ),
-        (
-            GlobalMetadata::TransactionTrieRootDigestAfter,
-            h2u(trie_roots_after.transactions_root),
-        ),
-        (
-            GlobalMetadata::ReceiptTrieRootDigestAfter,
-            h2u(trie_roots_after.receipts_root),
-        ),
-    ];
-
-    let channel = MemoryChannel::GeneralPurpose(0);
-    let ops = fields.map(|(field, val)| {
-        mem_write_log(
-            channel,
-            MemoryAddress::new(0, Segment::GlobalMetadata, field as usize),
-            state,
-            val,
-        )
-    });
-
-    state.memory.apply_ops(&ops);
-    state.traces.memory_ops.extend(ops);
-}
-*/
 fn recursive_log<F: RichField + Extendable<D>, const D: usize>(node: &TreeNode, values: &mut Vec<(Vec<u8>, Vec<u8>)>,
                                                                state: &mut GenerationState<F>, roots: &mut Vec<H256>) {
     for child in &node.children {
@@ -180,19 +121,7 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
     [Vec<PolynomialValues<F>>; NUM_TABLES],
     PublicValues,
 )> {
-    //let mut state = GenerationState::<F>::new(inputs.clone(), &KERNEL.code);
     let mut state = GenerationState { traces: Traces::default() };
-
-    // apply_metadata_and_tries_memops(&mut state, &inputs);
-
-    // generate_bootstrap_kernel::<F>(&mut state);
-
-    // timed!(timing, "simulate CPU", simulate_cpu(&mut state)?);
-
-    // assert!(
-    //     state.mpt_prover_inputs.is_empty(),
-    //     "All MPT data should have been consumed"
-    // );
 
     let mut roots = vec![];
     let mut values = vec![];
@@ -223,25 +152,6 @@ pub fn generate_traces<F: RichField + Extendable<D>, const D: usize>(
         state.traces.checkpoint()
     );
 
-    // let outputs = get_outputs(&mut state);
-
-    // let read_metadata = |field| state.memory.read_global_metadata(field);
-    // let trie_roots_before = TrieRoots {
-    //     state_root: H256::from_uint(&read_metadata(StateTrieRootDigestBefore)),
-    //     transactions_root: H256::from_uint(&read_metadata(TransactionTrieRootDigestBefore)),
-    //     receipts_root: H256::from_uint(&read_metadata(ReceiptTrieRootDigestBefore)),
-    // };
-    // let trie_roots_after = TrieRoots {
-    //     state_root: H256::from_uint(&read_metadata(StateTrieRootDigestAfter)),
-    //     transactions_root: H256::from_uint(&read_metadata(TransactionTrieRootDigestAfter)),
-    //     receipts_root: H256::from_uint(&read_metadata(ReceiptTrieRootDigestAfter)),
-    // };
-
-    // let public_values = PublicValues {
-    //     trie_roots_before,
-    //     trie_roots_after,
-    //     block_metadata: inputs.block_metadata,
-    // };
     let mut last_block_hash = H256::default();
 
     if let Some(header) = patricia_inputs.blockheaders.last() {

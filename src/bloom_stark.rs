@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 use itertools::Itertools;
-use log::info;
+
 use plonky2::field::extension::{Extendable, FieldExtension};
 use plonky2::field::packed::PackedField;
 use plonky2::field::polynomial::PolynomialValues;
@@ -13,7 +13,6 @@ use tiny_keccak::Hasher;
 use crate::bloom_stark::columns::{BLOOM_REGISTER, ID, IS_INCLUDED, NOT_DUMMY, TOPIC_REGISTER};
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
 use crate::cross_table_lookup::Column;
-use crate::search_substring::search_stark::columns::HAYSTACK_REGISTER;
 use crate::stark::Stark;
 use crate::util::trace_rows_to_poly_values;
 use crate::vars::{StarkEvaluationTargets, StarkEvaluationVars};
@@ -22,7 +21,6 @@ use crate::vars::{StarkEvaluationTargets, StarkEvaluationVars};
 pub const ADDRESS_SIZE: usize = 20;
 pub const TOPIC_SIZE: usize = 32;
 pub const BLOOM_SIZE_BYTES: usize = 256;
-// pub const BLOOM_BITS: usize = BLOOM_SIZE_BYTES * 8;
 
 pub(crate) mod columns {
     use std::ops::Range;
@@ -33,7 +31,6 @@ pub(crate) mod columns {
     pub(crate) const ID: usize = IS_INCLUDED + 1;
     pub(crate) const BLOOM_REGISTER: Range<usize> = ID + 1..ID + 1 + BLOOM_SIZE_BYTES;
     pub(crate) const TOPIC_REGISTER: Range<usize> = BLOOM_REGISTER.end..BLOOM_REGISTER.end + TOPIC_SIZE;
-    // pub(crate) const PATTERN_REGISTER: Range<usize> = BLOOM_REGISTER.end..BLOOM_REGISTER.end + BLOOM_SIZE_BYTES;
 }
 
 pub(crate) const NUM_COLUMNS: usize = TOPIC_REGISTER.end;
