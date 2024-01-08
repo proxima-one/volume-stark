@@ -76,24 +76,20 @@ pub fn generate_proof(
     proof_bytes.push(is_aggregated);
     fs::write(final_proof_path, &proof_bytes).expect("Proof writing error");
 
-//let conf = generate_verifier_config(&root_proof).expect("Generate verifier config error");
-  //  let proof_base64_json =
-    //    generate_proof_base64(&root_proof, &conf).expect("Generate proof Base64 error");
-    //let gnark_proof = String::from("proof.json");
-    //let gnark_proof_file = File::create(gnark_proof)?;
-    //let mut writer = BufWriter::new(gnark_proof_file);
-    //serde_json::to_writer(&mut writer, &proof_base64_json)?;
-
-
-    let gnark_proof = String::from("proof.json");
+    let gnark_proof = String::from("proof_with_public_inputs.json");
     let gnark_proof_file = File::create(gnark_proof)?;
     let mut writer = BufWriter::new(gnark_proof_file);
     serde_json::to_writer_pretty(&mut writer, &root_proof)?;
 
-    //let gnark_cd = String::from("common_circuit_data.json");
-    //let gnark_cd_file = File::create(gnark_cd)?;
-    //let mut writer = BufWriter::new(gnark_cd_file);
-    //serde_json::to_writer(&mut writer, &root_proof)?;
+    let gnark_cd = String::from("common_circuit_data.json");
+    let gnark_cd_file = File::create(gnark_cd)?;
+    let mut writer = BufWriter::new(gnark_cd_file);
+    serde_json::to_writer_pretty(&mut writer, &recursive_circuit.root.circuit.common)?;
+
+    let gnark_vd = String::from("verifier_only_circuit_data.json");
+    let gnark_vd_file = File::create(gnark_vd)?;
+    let mut writer = BufWriter::new(gnark_vd_file);
+    serde_json::to_writer_pretty(&mut writer, &recursive_circuit.root.circuit.verifier_only)?;
 
     // let conf = generate_verifier_config(&root_proof).expect("Generate verifier config error");
     // let proof_base64_json = generate_proof_base64(&root_proof, &conf).expect("Generate proof Base64 error");
