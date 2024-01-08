@@ -27,7 +27,7 @@ once_cell = "1.13.0"
 pest = "2.1.3"
 pest_derive = "2.1.0"
 #plonky2 = { version = "0.1.3", default-features = false, features = ["timing"] }
-plonky2 = {path = "../plonky2-0.1.3/plonky2", default-features = false, features = ["timing"]}
+plonky2 = {path = "../plonky2_for_volume/plonky2-0.1.3/plonky2", default-features = false, features = ["timing"]}
 #plonky2 = { git = "https://github.com/0xPolygonZero/plonky2.git", rev = "7781dd366fa9ab4bd7bd688764b021b911864c5b", default-features = false, features = ["timing", "parallel"] }
 plonky2_util = { version = "0.1.1" }
 rand = "0.8.5"
@@ -101,5 +101,3 @@ name = "run_proof_server"
 
 [[bin]]
 name = "test_run_proof_server"
-
-

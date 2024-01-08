@@ -1,17 +1,17 @@
-use std::env;
-use std::fs::File;
-use std::io::{BufRead, Read};
 use bytes::Buf;
 use bytes::Bytes;
-use env_logger::{DEFAULT_FILTER_ENV, Env, try_init_from_env};
+use env_logger::{try_init_from_env, Env, DEFAULT_FILTER_ENV};
 use http_body_util::{BodyExt, Full};
 use hyper::Request;
 use hyper_util::rt::TokioIo;
-use log::{error, info};
 use log::Level::Error;
-use serde_json::{json, Value};
-use tokio::net::TcpStream;
+use log::{error, info};
 use regex::Regex;
+use serde_json::{json, Value};
+use std::env;
+use std::fs::File;
+use std::io::{BufRead, Read};
+use tokio::net::TcpStream;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -19,9 +19,12 @@ fn init_logger() {
     let _ = try_init_from_env(Env::default().filter_or(DEFAULT_FILTER_ENV, "INFO"));
 }
 
-fn convert_data_to_json(paths_file_name: Option<&str>, block_headers_file_name: &str) -> Result<Value> {
+fn convert_data_to_json(
+    paths_file_name: Option<&str>,
+    block_headers_file_name: &str,
+) -> Result<Value> {
     let json_path = match paths_file_name {
-        None => { Value::String("[]".to_string()) }
+        None => Value::String("[]".to_string()),
         Some(file_name) => {
             let mut file_path = File::open(file_name)?;
             let mut path_contents = String::new();
@@ -37,7 +40,6 @@ fn convert_data_to_json(paths_file_name: Option<&str>, block_headers_file_name: 
     let final_json = json!({"merkle_paths": json_path, "block_headers": block_headers});
     Ok(final_json)
 }
-
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -94,34 +96,50 @@ async fn main() -> Result<()> {
         paths_with_ranges.push(matching_path);
     }
 
-
-    let url = "http://127.0.0.1:3000/generate_proof".parse::<hyper::Uri>().unwrap();
+    let url = "http://127.0.0.1:3000/generate_proof"
+        .parse::<hyper::Uri>()
+        .unwrap();
     if url.scheme_str() != Some("http") {
         info!("This test only works with 'http' URLs.");
         return Ok(());
     }
-    let agg_url = "http://127.0.0.1:3000/aggregate".parse::<hyper::Uri>().unwrap();
-    let proof_data_json_first = convert_data_to_json(paths_with_ranges[0], block_names[0].as_str()).expect("Error parsing data to JSON");
-    let proof_data_json_second = convert_data_to_json(paths_with_ranges[1], block_names[1].as_str()).expect("Error parsing data to JSON");
+    let agg_url = "http://127.0.0.1:3000/aggregate"
+        .parse::<hyper::Uri>()
+        .unwrap();
+    let proof_data_json_first = convert_data_to_json(paths_with_ranges[0], block_names[0].as_str())
+        .expect("Error parsing data to JSON");
+    let proof_data_json_second =
+        convert_data_to_json(paths_with_ranges[1], block_names[1].as_str())
+            .expect("Error parsing data to JSON");
 
-    let binding = generate_proof(url.clone(), proof_data_json_first).await.expect("Error generating first proof");
+    let binding = generate_proof(url.clone(), proof_data_json_first)
+        .await
+        .expect("Error generating first proof");
     let first_proof = binding.as_str();
-    let binding = generate_proof(url.clone(), proof_data_json_second).await.expect("Error generating first proof");
+    let binding = generate_proof(url.clone(), proof_data_json_second)
+        .await
+        .expect("Error generating first proof");
     let second_proof = binding.as_str();
 
     let agg_json = json!({"lhs_proof" : first_proof, "rhs_proof" : second_proof });
-    let binding = aggregate_proof(agg_url.clone(), agg_json).await.expect("Error generating agg first proof");
+    let binding = aggregate_proof(agg_url.clone(), agg_json)
+        .await
+        .expect("Error generating agg first proof");
     let mut agg_proof = binding.as_str().to_string();
 
     for (paths_name, block_name) in paths_with_ranges.iter().zip(block_names).skip(2) {
-        let proof_data_json = convert_data_to_json(*paths_name, block_name.as_str()).expect("Error parsing data to JSON");
-        let binding = generate_proof(url.clone(), proof_data_json).await.expect("Error generating first proof");
+        let proof_data_json = convert_data_to_json(*paths_name, block_name.as_str())
+            .expect("Error parsing data to JSON");
+        let binding = generate_proof(url.clone(), proof_data_json)
+            .await
+            .expect("Error generating first proof");
         let first_proof = binding.as_str();
         let agg_json = json!({"lhs_proof" : agg_proof, "rhs_proof" : first_proof });
-        let result = aggregate_proof(agg_url.clone(), agg_json).await.expect("Error generating agg first proof");
+        let result = aggregate_proof(agg_url.clone(), agg_json)
+            .await
+            .expect("Error generating agg first proof");
         agg_proof = result.as_str().to_string();
     }
-
 
     Ok(())
 }
@@ -148,8 +166,13 @@ async fn generate_proof(url: hyper::Uri, json_value: Value) -> Result<String> {
         .header(hyper::header::HOST, authority.as_str())
         .body(Full::<Bytes>::new(Bytes::from(json_value.to_string())))?;
     let mut res = sender.send_request(req).await?;
-    let whole_body = res.collect().await.expect("Error result from request").aggregate();
-    let data: serde_json::Value = serde_json::from_reader(whole_body.reader()).expect("JSON not decoded");
+    let whole_body = res
+        .collect()
+        .await
+        .expect("Error result from request")
+        .aggregate();
+    let data: serde_json::Value =
+        serde_json::from_reader(whole_body.reader()).expect("JSON not decoded");
     let proof_b64 = data.clone()["aggregated_proof"]
         .as_str()
         .expect("Proof data not included")
@@ -180,8 +203,13 @@ async fn aggregate_proof(url: hyper::Uri, json_value: Value) -> Result<(String)>
         .header(hyper::header::HOST, authority.as_str())
         .body(Full::<Bytes>::new(Bytes::from(json_value.to_string())))?;
     let mut res = sender.send_request(req).await?;
-    let whole_body = res.collect().await.expect("Error result from request").aggregate();
-    let data: serde_json::Value = serde_json::from_reader(whole_body.reader()).expect("JSON not decoded");
+    let whole_body = res
+        .collect()
+        .await
+        .expect("Error result from request")
+        .aggregate();
+    let data: serde_json::Value =
+        serde_json::from_reader(whole_body.reader()).expect("JSON not decoded");
     let proof_b64 = data.clone()["aggregated_proof"]
         .as_str()
         .expect("Proof data not included")
