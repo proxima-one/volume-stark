@@ -1,14 +1,14 @@
 use plonky2::field::extension::quadratic::QuadraticExtension;
 use plonky2::field::extension::Extendable;
 use plonky2::field::goldilocks_field::GoldilocksField;
-use plonky2::iop::target::Target;
+use plonky2::iop::target::{BoolTarget, Target};
 
 use core::mem::size_of;
 use plonky2::hash::hash_types::{HashOut, HashOutTarget, RichField};
 use plonky2::hash::hashing::{
     compress, hash_n_to_hash_no_pad, PlonkyPermutation, SPONGE_RATE, SPONGE_WIDTH,
 };
-use plonky2::hash::poseidon::{PoseidonHash, Poseidon};
+use plonky2::hash::poseidon::{Poseidon, PoseidonHash};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, Hasher};
 use poseidon_permutation::bindings::permute;
@@ -41,7 +41,9 @@ impl Permuter for Target {
     }
 }
 
-impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<T> for PoseidonBN128Permutation<T> {
+impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<T>
+    for PoseidonBN128Permutation<T>
+{
     const RATE: usize = SPONGE_RATE;
     const WIDTH: usize = SPONGE_WIDTH;
 
@@ -182,7 +184,7 @@ impl<F: RichField> AlgebraicHasher<F> for PoseidonBN128Hash {
         inputs: Self::AlgebraicPermutation,
         swap: BoolTarget,
         builder: &mut CircuitBuilder<F, D>,
-    ) -> Self::AlgebraicPermutation,
+    ) -> Self::AlgebraicPermutation
     where
         F: RichField + Extendable<D>,
     {
