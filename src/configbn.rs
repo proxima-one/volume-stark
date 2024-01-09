@@ -25,49 +25,28 @@ impl<T> AsRef<[T]> for PoseidonBN128Permutation<T> {
     }
 }
 
-trait Permuter: Sized {
-    fn permute(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH];
-}
-
-impl<F: Poseidon> Permuter for F {
-    fn permute(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
-        <F as Poseidon>::poseidon(input)
-    }
-}
-
-impl Permuter for Target {
-    fn permute(_input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
-        panic!("Call `permute_swapped()` instead of `permute()`");
-    }
-}
-
-impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<T>
+impl<T: Copy + Debug + Default + Eq + Send + Sync> PlonkyPermutation<T>
     for PoseidonBN128Permutation<T>
 {
     const RATE: usize = SPONGE_RATE;
     const WIDTH: usize = SPONGE_WIDTH;
 
-    /*fn permute(&mut self) {
-        let mut state_bytes = vec![0u8; SPONGE_WIDTH * size_of::<u64>()];
-        for i in 0..SPONGE_WIDTH {
-            state_bytes[i * size_of::<u64>()..(i + 1) * size_of::<u64>()]
-                .copy_from_slice(&self.state[i].to_canonical_u64().to_le_bytes());
-        }
-
+    /*fn permute(input: [F; SPONGE_WIDTH]) -> [F; SPONGE_WIDTH] {
+        assert_eq!(SPONGE_WIDTH, 12);
         unsafe {
             let h = permute(
-                state_bytes[0].to_canonical_u64(),
-                state_bytes[1].to_canonical_u64(),
-                state_bytes[2].to_canonical_u64(),
-                state_bytes[3].to_canonical_u64(),
-                state_bytes[4].to_canonical_u64(),
-                state_bytes[5].to_canonical_u64(),
-                state_bytes[6].to_canonical_u64(),
-                state_bytes[7].to_canonical_u64(),
-                state_bytes[8].to_canonical_u64(),
-                state_bytes[9].to_canonical_u64(),
-                state_bytes[10].to_canonical_u64(),
-                state_bytes[11].to_canonical_u64(),
+                input[0].to_canonical_u64(),
+                input[1].to_canonical_u64(),
+                input[2].to_canonical_u64(),
+                input[3].to_canonical_u64(),
+                input[4].to_canonical_u64(),
+                input[5].to_canonical_u64(),
+                input[6].to_canonical_u64(),
+                input[7].to_canonical_u64(),
+                input[8].to_canonical_u64(),
+                input[9].to_canonical_u64(),
+                input[10].to_canonical_u64(),
+                input[11].to_canonical_u64(),
             );
 
             [
@@ -136,7 +115,22 @@ impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<
     }*/
 
     fn permute(&mut self) {
-        self.state = T::permute(self.state);
+        unsafe {
+            permute(
+                self.state[0],
+                self.state[1],
+                self.state[2],
+                self.state[3],
+                self.state[4],
+                self.state[5],
+                self.state[6],
+                self.state[7],
+                self.state[8],
+                self.state[9],
+                self.state[10],
+                self.state[11],
+            )
+        };
     }
 
     fn new<I: IntoIterator<Item = T>>(iter: I) -> Self {
