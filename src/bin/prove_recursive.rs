@@ -3,13 +3,16 @@ use env_logger::{try_init_from_env, Env, DEFAULT_FILTER_ENV};
 use log::{error, info};
 use maru_volume_stark::all_stark::AllStark;
 use maru_volume_stark::block_header::read_headers_from_file;
-use maru_volume_stark::circom_verifier::{generate_proof_base64, generate_verifier_config};
+use maru_volume_stark::circom_verifier::{
+    generate_proof_base64, generate_verifier_config, recursive_proof,
+};
 use maru_volume_stark::config::StarkConfig;
 use maru_volume_stark::fixed_recursive_verifier::AllRecursiveCircuits;
 use maru_volume_stark::generation::PatriciaInputs;
 use maru_volume_stark::patricia_merkle_trie::{convert_to_tree, read_paths_from_file};
 use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::plonk::config::PoseidonGoldilocksConfig;
+use plonky2::recursion;
 use plonky2::util::serialization::{DefaultGateSerializer, DefaultGeneratorSerializer};
 use plonky2::util::timing::TimingTree;
 use serde::{Deserialize, Serialize};
@@ -23,6 +26,8 @@ type F = GoldilocksField;
 const D: usize = 2;
 
 type C = PoseidonGoldilocksConfig;
+
+type CBN128 = PoseidonBN128GoldilocksConfig;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(bound = "")]
@@ -75,6 +80,12 @@ pub fn generate_proof(
     let mut proof_bytes = root_proof.to_bytes();
     proof_bytes.push(is_aggregated);
     fs::write(final_proof_path, &proof_bytes).expect("Proof writing error");
+
+    let (recursive_dta, recursive_proof) = recursive_proof::<F, CBN128, C, D>(
+        root_proof,
+        recursive_circuit.root.circuit.verifier_only,
+        recursive_circuit.root.circuit.common,
+    )?;
 
     let gnark_proof = String::from(
         "/home/ubuntu/gnark-plonky2-verifier/testdata/step/proof_with_public_inputs.json",
