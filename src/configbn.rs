@@ -8,7 +8,7 @@ use plonky2::hash::hash_types::{HashOut, HashOutTarget, RichField};
 use plonky2::hash::hashing::{
     compress, hash_n_to_hash_no_pad, PlonkyPermutation, SPONGE_RATE, SPONGE_WIDTH,
 };
-use plonky2::hash::poseidon::{Poseidon, PoseidonHash};
+use plonky2::hash::poseidon::{Poseidon, PoseidonHash, PoseidonPermutation};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, Hasher};
 use poseidon_permutation::bindings::permute;
@@ -117,7 +117,7 @@ impl<T: Copy + Debug + Default + Eq + Send + Sync> PlonkyPermutation<T>
     fn permute(&mut self) {
         unsafe {
             permute(
-                self.state[0],
+                self.state[0].try_into().unwrap(),
                 self.state[1],
                 self.state[2],
                 self.state[3],
@@ -172,7 +172,7 @@ impl<F: RichField> Hasher<F> for PoseidonBN128Hash {
 
 // TODO: this is a work around. Still use Goldilocks based Poseidon for algebraic PoseidonBN128Hash.
 impl<F: RichField> AlgebraicHasher<F> for PoseidonBN128Hash {
-    type AlgebraicPermutation = PoseidonBN128Permutation<Target>;
+    type AlgebraicPermutation = PoseidonPermutation<Target>;
 
     fn permute_swapped<const D: usize>(
         inputs: Self::AlgebraicPermutation,
