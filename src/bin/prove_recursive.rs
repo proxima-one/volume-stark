@@ -82,7 +82,7 @@ pub fn generate_proof(
     proof_bytes.push(is_aggregated);
     fs::write(final_proof_path, &proof_bytes).expect("Proof writing error");
 
-    let (recursive_dta, recursive_proof) = recursive_proof::<F, CBN128, C, D>(
+    let (recursive_data_proof) = recursive_proof::<F, CBN128, C, D>(
         root_proof,
         recursive_circuit.root.circuit.verifier_only,
         recursive_circuit.root.circuit.common,
