@@ -26,8 +26,8 @@ pub fn encode_hex(bytes: &[u8]) -> String {
     }
     s
 }
-/*
-fn recursive_proof<
+
+pub fn recursive_proof<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
     InnerC: GenericConfig<D, F = F>,
@@ -36,10 +36,6 @@ fn recursive_proof<
     inner_proof: ProofWithPublicInputs<F, InnerC, D>,
     inner_vd: VerifierOnlyCircuitData<InnerC, D>,
     inner_cd: CommonCircuitData<F, D>,
-    config: &CircuitConfig,
-    min_degree_bits: Option<usize>,
-    print_gate_counts: bool,
-    print_timing: bool,
 ) -> Result<(
     ProofWithPublicInputs<F, C, D>,
     VerifierOnlyCircuitData<C, D>,
@@ -49,7 +45,7 @@ where
     InnerC::Hasher: AlgebraicHasher<F>,
     [(); C::Hasher::HASH_SIZE]:,
 {
-    let mut builder = CircuitBuilder::<F, D>::new(config.clone());
+    let mut builder = CircuitBuilder::<F, D>::new(CircuitConfig::standard_recursion_config());
     let mut pw = PartialWitness::new();
     let pt = builder.add_virtual_proof_with_pis(&inner_cd);
     pw.set_proof_with_pis_target(&pt, &inner_proof);
@@ -70,34 +66,17 @@ where
     }
     builder.verify_proof::<InnerC>(&pt, &inner_data, &inner_cd);
 
-    if print_gate_counts {
-        builder.print_gate_counts(0);
-    }
-
-    if let Some(min_degree_bits) = min_degree_bits {
-        // We don't want to pad all the way up to 2^min_degree_bits, as the builder will add a
-        // few special gates afterward. So just pad to 2^(min_degree_bits - 1) + 1. Then the
-        // builder will pad to the next power of two, 2^min_degree_bits.
-        let min_gates = (1 << (min_degree_bits - 1)) + 1;
-        for _ in builder.num_gates()..min_gates {
-            builder.add_gate(NoopGate, vec![]);
-        }
-    }
-
     let data = builder.build::<C>();
 
     let mut timing = TimingTree::new("prove", Level::Debug);
     let proof = prove(&data.prover_only, &data.common, pw, &mut timing)?;
-    if print_timing {
-        timing.print();
-    }
+    timing.print();
 
     println!("######################### recursive verify #########################");
     data.verify(proof.clone())?;
 
     Ok((proof, data.verifier_only, data.common))
 }
-*/
 
 type ProofTuple<F, C, const D: usize> = (
     ProofWithPublicInputs<F, C, D>,
@@ -116,9 +95,9 @@ fn aggregation_proof<
     config: &CircuitConfig,
     min_degree_bits: Option<usize>,
 ) -> Result<ProofTuple<F, C, D>>
-    where
-        InnerC::Hasher: AlgebraicHasher<F>,
-        [(); C::Hasher::HASH_SIZE]:,
+where
+    InnerC::Hasher: AlgebraicHasher<F>,
+    [(); C::Hasher::HASH_SIZE]:,
 {
     let mut builder = CircuitBuilder::<F, D>::new(config.clone());
     let mut pw = PartialWitness::new();
@@ -185,7 +164,9 @@ fn aggregation_proof<
     Ok((proof, data.verifier_only, data.common))
 }
 
-fn fib_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>(input : u32) -> Result<ProofTuple<F, C, D>> {
+fn fib_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>(
+    input: u32,
+) -> Result<ProofTuple<F, C, D>> {
     // const D: usize = 2;
     // type C = PoseidonGoldilocksConfig;
     // type F = <C as GenericConfig<D>>::F;
@@ -214,7 +195,7 @@ fn fib_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: 
     if input == 1 {
         pw.set_target(initial_a, F::ZERO);
         pw.set_target(initial_b, F::ONE);
-    }else{
+    } else {
         pw.set_target(initial_a, F::ONE);
         pw.set_target(initial_b, F::TWO);
     }
@@ -231,7 +212,6 @@ fn fib_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: 
 
     Ok((proof, data.verifier_only, data.common))
 }
-
 
 #[derive(Serialize)]
 pub struct VerifierConfig {
@@ -491,12 +471,12 @@ pub fn generate_proof_base64<
     for i in 0..conf.num_openings_quotient_polys {
         openings_quotient_polys[i][0] = pwpi.proof.openings.quotient_polys[i].to_basefield_array()
             [0]
-            .to_canonical_u64()
-            .to_string();
+        .to_canonical_u64()
+        .to_string();
         openings_quotient_polys[i][1] = pwpi.proof.openings.quotient_polys[i].to_basefield_array()
             [1]
-            .to_canonical_u64()
-            .to_string();
+        .to_canonical_u64()
+        .to_string();
     }
 
     proof_size += (conf.num_fri_commit_round * conf.fri_commit_merkle_cap_height) * conf.hash_size;
@@ -518,27 +498,27 @@ pub fn generate_proof_base64<
 
     proof_size += conf.num_fri_query_round
         * ((conf.num_fri_query_init_constants_sigmas_v
-        + conf.num_fri_query_init_wires_v
-        + conf.num_fri_query_init_zs_partial_v
-        + conf.num_fri_query_init_quotient_v)
-        * conf.field_size
-        + (conf.num_fri_query_init_constants_sigmas_p
-        + conf.num_fri_query_init_wires_p
-        + conf.num_fri_query_init_zs_partial_p
-        + conf.num_fri_query_init_quotient_p)
-        * conf.hash_size
-        + conf.merkle_height_size * 4);
+            + conf.num_fri_query_init_wires_v
+            + conf.num_fri_query_init_zs_partial_v
+            + conf.num_fri_query_init_quotient_v)
+            * conf.field_size
+            + (conf.num_fri_query_init_constants_sigmas_p
+                + conf.num_fri_query_init_wires_p
+                + conf.num_fri_query_init_zs_partial_p
+                + conf.num_fri_query_init_quotient_p)
+                * conf.hash_size
+            + conf.merkle_height_size * 4);
 
     proof_size += conf.num_fri_query_round
         * (conf.num_fri_query_step0_v * conf.ext_field_size
-        + conf.num_fri_query_step0_p * conf.hash_size
-        + conf.merkle_height_size
-        + conf.num_fri_query_step1_v * conf.ext_field_size
-        + conf.num_fri_query_step1_p * conf.hash_size
-        + conf.merkle_height_size
-        + conf.num_fri_query_step2_v * conf.ext_field_size
-        + conf.num_fri_query_step2_p * conf.hash_size
-        + conf.merkle_height_size);
+            + conf.num_fri_query_step0_p * conf.hash_size
+            + conf.merkle_height_size
+            + conf.num_fri_query_step1_v * conf.ext_field_size
+            + conf.num_fri_query_step1_p * conf.hash_size
+            + conf.merkle_height_size
+            + conf.num_fri_query_step2_v * conf.ext_field_size
+            + conf.num_fri_query_step2_p * conf.hash_size
+            + conf.merkle_height_size);
 
     let mut fri_query_init_constants_sigmas_v =
         vec![
