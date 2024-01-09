@@ -8,7 +8,7 @@ use plonky2::hash::hash_types::{HashOut, HashOutTarget, RichField};
 use plonky2::hash::hashing::{
     compress, hash_n_to_hash_no_pad, PlonkyPermutation, SPONGE_RATE, SPONGE_WIDTH,
 };
-use plonky2::hash::poseidon::{Poseidon, PoseidonHash, PoseidonPermutation};
+use plonky2::hash::poseidon::{Permuter, Poseidon, PoseidonHash, PoseidonPermutation};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::config::{AlgebraicHasher, GenericConfig, Hasher};
 use poseidon_permutation::bindings::permute;
@@ -25,7 +25,7 @@ impl<T> AsRef<[T]> for PoseidonBN128Permutation<T> {
     }
 }
 
-impl<T: Copy + Debug + Default + Eq + Send + Sync> PlonkyPermutation<T>
+impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<T>
     for PoseidonBN128Permutation<T>
 {
     const RATE: usize = SPONGE_RATE;
@@ -114,10 +114,10 @@ impl<T: Copy + Debug + Default + Eq + Send + Sync> PlonkyPermutation<T>
         }
     }*/
 
-    fn permute(&mut self) {
+    /*fn permute(&mut self) {
         unsafe {
             permute(
-                self.state[0].try_into().unwrap(),
+                self.state.get_unchecked_mut(0),
                 self.state[1],
                 self.state[2],
                 self.state[3],
@@ -131,6 +131,10 @@ impl<T: Copy + Debug + Default + Eq + Send + Sync> PlonkyPermutation<T>
                 self.state[11],
             )
         };
+    }*/
+
+    fn permute(&mut self) {
+        self.state = T::permute(self.state);
     }
 
     fn new<I: IntoIterator<Item = T>>(iter: I) -> Self {

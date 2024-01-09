@@ -31,7 +31,7 @@ poseidon-permutation = {git = "https://github.com/EkaterynaKuznetsova/poseidon-p
 #plonky2 = { version = "0.1.3", default-features = false, features = ["timing"] }
 # plonky2 = {path = "../plonky2_for_volume/plonky2-0.1.3/plonky2", default-features = false, features = ["timing"]}
 #plonky2 = { git = "https://github.com/0xPolygonZero/plonky2.git", rev = "7781dd366fa9ab4bd7bd688764b021b911864c5b", default-features = false, features = ["timing", "parallel"] }
-plonky2 = { git = "https://github.com/EkaterynaKuznetsova/plonky2", rev = "f9c8904ca3d34100d48391ce557b5d783c473893"}
+plonky2 = { git = "https://github.com/EkaterynaKuznetsova/plonky2", rev = "ae299a74ef9bea393e93884c781be9e1a8c59095"}
 plonky2_util = { version = "0.1.1" }
 rand = "0.8.5"
 rand_chacha = "0.3.1"
