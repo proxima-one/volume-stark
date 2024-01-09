@@ -93,20 +93,20 @@ pub fn generate_proof(
     );
     let gnark_proof_file = File::create(gnark_proof)?;
     let mut writer = BufWriter::new(gnark_proof_file);
-    serde_json::to_writer_pretty(&mut writer, &root_proof)?;
+    serde_json::to_writer_pretty(&mut writer, &recursive_data_proof.0)?;
 
     let gnark_cd =
         String::from("/home/ubuntu/gnark-plonky2-verifier/testdata/step/common_circuit_data.json");
     let gnark_cd_file = File::create(gnark_cd)?;
     let mut writer = BufWriter::new(gnark_cd_file);
-    serde_json::to_writer_pretty(&mut writer, &recursive_circuit.root.circuit.common)?;
+    serde_json::to_writer_pretty(&mut writer, &recursive_data_proof.2)?;
 
     let gnark_vd = String::from(
         "/home/ubuntu/gnark-plonky2-verifier/testdata/step/verifier_only_circuit_data.json",
     );
     let gnark_vd_file = File::create(gnark_vd)?;
     let mut writer = BufWriter::new(gnark_vd_file);
-    serde_json::to_writer_pretty(&mut writer, &recursive_circuit.root.circuit.verifier_only)?;
+    serde_json::to_writer_pretty(&mut writer, &recursive_data_proof.1)?;
 
     // let conf = generate_verifier_config(&root_proof).expect("Generate verifier config error");
     // let proof_base64_json = generate_proof_base64(&root_proof, &conf).expect("Generate proof Base64 error");
