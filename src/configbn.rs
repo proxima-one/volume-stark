@@ -2,6 +2,7 @@ use plonky2::field::extension::quadratic::QuadraticExtension;
 use plonky2::field::extension::Extendable;
 use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::iop::target::{BoolTarget, Target};
+use serde::Serialize;
 
 use core::mem::size_of;
 use plonky2::hash::hash_types::{HashOut, HashOutTarget, RichField};
@@ -191,7 +192,7 @@ impl<F: RichField> AlgebraicHasher<F> for PoseidonBN128Hash {
 }
 
 /// Configuration using Poseidon over the Goldilocks field.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]
 pub struct PoseidonBN128GoldilocksConfig;
 
 impl GenericConfig<2> for PoseidonBN128GoldilocksConfig {
