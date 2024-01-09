@@ -7,6 +7,7 @@ use maru_volume_stark::circom_verifier::{
     generate_proof_base64, generate_verifier_config, recursive_proof,
 };
 use maru_volume_stark::config::StarkConfig;
+use maru_volume_stark::configbn::PoseidonBN128GoldilocksConfig;
 use maru_volume_stark::fixed_recursive_verifier::AllRecursiveCircuits;
 use maru_volume_stark::generation::PatriciaInputs;
 use maru_volume_stark::patricia_merkle_trie::{convert_to_tree, read_paths_from_file};
