@@ -42,6 +42,10 @@ pub mod data;
 
 pub mod configbn;
 
+pub mod configbn2;
+pub mod utilsbn;
+pub mod poseidon_bn128;
+
 use eth_trie_utils::partial_trie::HashedPartialTrie;
 // Set up Jemalloc
 #[cfg(not(target_env = "msvc"))]
