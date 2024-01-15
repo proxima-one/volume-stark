@@ -45,6 +45,7 @@ pub mod configbn;
 pub mod configbn2;
 pub mod utilsbn;
 pub mod poseidon_bn128;
+pub mod poseidon_bn128_constants;
 
 use eth_trie_utils::partial_trie::HashedPartialTrie;
 // Set up Jemalloc

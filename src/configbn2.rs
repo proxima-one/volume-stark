@@ -14,7 +14,7 @@ use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::poseidon_bn128::{permution, GOLDILOCKS_ELEMENTS, RATE};
-use crate::utils::{Fr, FrRepr};
+use crate::utilsbn::{Fr, FrRepr};
 
 /// Configuration using Poseidon BN128 over the Goldilocks field.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]

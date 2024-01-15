@@ -5,7 +5,7 @@ use ff::Field;
 use crate::poseidon_bn128_constants::{
     C_CONSTANTS, M_MATRIX, P_MATRIX, S_CONSTANTS,
 };
-use crate::utils::Fr;
+use crate::utilsbn::Fr;
 
 pub const RATE: usize = 3;
 pub const WIDTH: usize = 4;
