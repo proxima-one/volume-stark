@@ -134,28 +134,36 @@ impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<
         };
     }*/
 
+    fn new<I: IntoIterator<Item = T>>(elts: I) -> Self {
+        let mut perm = Self {
+            state: [T::default(); SPONGE_WIDTH],
+        };
+        perm.set_from_iter(elts, 0);
+        perm
+    }
+
+    fn set_elt(&mut self, elt: T, idx: usize) {
+        self.state[idx] = elt;
+    }
+
+    fn set_from_slice(&mut self, elts: &[T], start_idx: usize) {
+        let begin = start_idx;
+        let end = start_idx + elts.len();
+        self.state[begin..end].copy_from_slice(elts);
+    }
+
+    fn set_from_iter<I: IntoIterator<Item = T>>(&mut self, elts: I, start_idx: usize) {
+        for (s, e) in self.state[start_idx..].iter_mut().zip(elts) {
+            *s = e;
+        }
+    }
+
     fn permute(&mut self) {
         self.state = T::permute(self.state);
     }
 
-    fn new<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        todo!()
-    }
-
-    fn set_elt(&mut self, elt: T, idx: usize) {
-        todo!()
-    }
-
-    fn set_from_iter<I: IntoIterator<Item = T>>(&mut self, elts: I, start_idx: usize) {
-        todo!()
-    }
-
-    fn set_from_slice(&mut self, elts: &[T], start_idx: usize) {
-        todo!()
-    }
-
     fn squeeze(&self) -> &[T] {
-        todo!()
+        &self.state[..Self::RATE]
     }
 }
 
