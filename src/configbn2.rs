@@ -13,8 +13,8 @@ use plonky2::plonk::config::{GenericConfig, GenericHashOut, Hasher};
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::backend::wrapper::poseidon_bn128::{permution, GOLDILOCKS_ELEMENTS, RATE};
-use crate::backend::wrapper::utils::{Fr, FrRepr};
+use crate::poseidon_bn128::{permution, GOLDILOCKS_ELEMENTS, RATE};
+use crate::utils::{Fr, FrRepr};
 
 /// Configuration using Poseidon BN128 over the Goldilocks field.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]
@@ -198,7 +198,7 @@ impl<F: RichField> Hasher<F> for PoseidonBN128Hash {
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
+    use crate::configbn2;
 
     #[test]
     fn test_byte_methods() {
