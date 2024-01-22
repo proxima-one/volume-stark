@@ -40,12 +40,7 @@ pub mod witness;
 pub mod circom_verifier;
 pub mod data;
 
-pub mod configbn;
-
-pub mod configbn2;
-pub mod utilsbn;
-pub mod poseidon_bn128;
-pub mod poseidon_bn128_constants;
+pub mod bn128;
 
 use eth_trie_utils::partial_trie::HashedPartialTrie;
 // Set up Jemalloc

@@ -8,6 +8,7 @@ use std::marker::PhantomData;
 use ethereum_types::H256;
 use ethereum_types::U256;
 use itertools::Itertools;
+use maru_volume_stark::bn128::config::PoseidonBN128GoldilocksConfig;
 use plonky2::field::goldilocks_field::GoldilocksField;
 use plonky2::fri::FriParams;
 use plonky2::plonk::circuit_data::CommonCircuitData;
@@ -21,23 +22,22 @@ use plonky2::util::timing::TimingTree;
 use maru_volume_stark::proof::PublicValues;
 use serde::{Deserialize, Serialize};
 use maru_volume_stark::all_stark::AllStark;
-use maru_volume_stark::circom_verifier::{generate_proof_base64, generate_verifier_config};
+use maru_volume_stark::circom_verifier::{generate_proof_base64, generate_verifier_config, recursive_proof};
 use maru_volume_stark::config::StarkConfig;
 use maru_volume_stark::fixed_recursive_verifier::AllRecursiveCircuits;
-use maru_volume_stark::generation::{ PatriciaInputs};
+use maru_volume_stark::generation::PatriciaInputs;
 use maru_volume_stark::patricia_merkle_trie::read_paths_from_file;
 type F = GoldilocksField;
 
 const D: usize = 2;
-
 type C = PoseidonGoldilocksConfig;
+type CBN128 = PoseidonBN128GoldilocksConfig;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(bound = "")]
 pub struct ConfigJson {
     pub degree_bits: String,
 }
-
 
 pub fn generate_agg_proof(
     recursive_circuit: &AllRecursiveCircuits<GoldilocksField, C, 2>,
@@ -67,8 +67,6 @@ pub fn generate_agg_proof(
     let second_proof: ProofWithPublicInputs<GoldilocksField, C, 2> = ProofWithPublicInputs::from_bytes(second_proof_data, &common_data)
         .expect("Error loading proof data");
 
-    // recursive_circuit.verify_root(first_proof.clone())?;
-    // recursive_circuit.verify_root(second_proof.clone())?;
 
     let pi_1 = first_proof.public_inputs.iter().take(24).map(|x| x.0.to_le_bytes()[0..4].to_vec()).concat();
     let starting_sum = U256::from_little_endian(&pi_1[0..32]);
@@ -108,6 +106,32 @@ pub fn generate_agg_proof(
     let hex_input_file = File::create(hex_input_file_name)?;
     let mut writer = BufWriter::new(hex_input_file);
     serde_json::to_writer(&mut writer, &agg_proof.1)?;
+
+    let (recursive_data_proof) = recursive_proof::<F, CBN128, C, D>(
+        agg_proof.0,
+        recursive_circuit.aggregation.circuit.verifier_only,
+        recursive_circuit.aggregation.circuit.common,
+    )?;
+
+    let gnark_proof = String::from(
+        "/home/ubuntu/gnark-plonky2-verifier/testdata/step/proof_with_public_inputs.json",
+    );
+    let gnark_proof_file = File::create(gnark_proof)?;
+    let mut writer = BufWriter::new(gnark_proof_file);
+    serde_json::to_writer_pretty(&mut writer, &recursive_data_proof.0)?;
+
+    let gnark_cd =
+        String::from("/home/ubuntu/gnark-plonky2-verifier/testdata/step/common_circuit_data.json");
+    let gnark_cd_file = File::create(gnark_cd)?;
+    let mut writer = BufWriter::new(gnark_cd_file);
+    serde_json::to_writer_pretty(&mut writer, &recursive_data_proof.2)?;
+
+    let gnark_vd = String::from(
+        "/home/ubuntu/gnark-plonky2-verifier/testdata/step/verifier_only_circuit_data.json",
+    );
+    let gnark_vd_file = File::create(gnark_vd)?;
+    let mut writer = BufWriter::new(gnark_vd_file);
+    serde_json::to_writer_pretty(&mut writer, &recursive_data_proof.1)?;
 
     Ok(())
 }

@@ -7,7 +7,6 @@ use maru_volume_stark::circom_verifier::{
     generate_proof_base64, generate_verifier_config, recursive_proof,
 };
 use maru_volume_stark::config::StarkConfig;
-use maru_volume_stark::configbn2::PoseidonBN128GoldilocksConfig;
 use maru_volume_stark::fixed_recursive_verifier::AllRecursiveCircuits;
 use maru_volume_stark::generation::PatriciaInputs;
 use maru_volume_stark::patricia_merkle_trie::{convert_to_tree, read_paths_from_file};
@@ -23,12 +22,8 @@ use std::marker::PhantomData;
 use std::{env, fs};
 
 type F = GoldilocksField;
-
 const D: usize = 2;
-
 type C = PoseidonGoldilocksConfig;
-
-type CBN128 = PoseidonBN128GoldilocksConfig;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(bound = "")]
@@ -81,42 +76,6 @@ pub fn generate_proof(
     let mut proof_bytes = root_proof.to_bytes();
     proof_bytes.push(is_aggregated);
     fs::write(final_proof_path, &proof_bytes).expect("Proof writing error");
-
-    let (recursive_data_proof) = recursive_proof::<F, CBN128, C, D>(
-        root_proof,
-        recursive_circuit.root.circuit.verifier_only,
-        recursive_circuit.root.circuit.common,
-    )?;
-
-    let gnark_proof = String::from(
-        "/home/ubuntu/gnark-plonky2-verifier/testdata/step/proof_with_public_inputs.json",
-    );
-    let gnark_proof_file = File::create(gnark_proof)?;
-    let mut writer = BufWriter::new(gnark_proof_file);
-    serde_json::to_writer_pretty(&mut writer, &recursive_data_proof.0)?;
-
-    let gnark_cd =
-        String::from("/home/ubuntu/gnark-plonky2-verifier/testdata/step/common_circuit_data.json");
-    let gnark_cd_file = File::create(gnark_cd)?;
-    let mut writer = BufWriter::new(gnark_cd_file);
-    serde_json::to_writer_pretty(&mut writer, &recursive_data_proof.2)?;
-
-    let gnark_vd = String::from(
-        "/home/ubuntu/gnark-plonky2-verifier/testdata/step/verifier_only_circuit_data.json",
-    );
-    let gnark_vd_file = File::create(gnark_vd)?;
-    let mut writer = BufWriter::new(gnark_vd_file);
-    serde_json::to_writer_pretty(&mut writer, &recursive_data_proof.1)?;
-
-    // let conf = generate_verifier_config(&root_proof).expect("Generate verifier config error");
-    // let proof_base64_json = generate_proof_base64(&root_proof, &conf).expect("Generate proof Base64 error");
-    // let pretty_proof_path = format!("{}.json", final_proof_path);
-    // fs::write(pretty_proof_path, proof_base64_json.as_bytes())?;
-    //
-    // let hex_input_file_name = format!("{}.public.json", final_proof_path);
-    // let hex_input_file = File::create(hex_input_file_name)?;
-    // let mut writer = BufWriter::new(hex_input_file);
-    // serde_json::to_writer(&mut writer, &pis)?;
 
     Ok(())
 }
