@@ -2,7 +2,7 @@
 
 ## Description and overview
 
-[Description](https://docs.maru.network/zk-implementation/schema)
+For more details about the Volume STARK system, see this [description](https://docs.maru.network/zk-implementation/schema)
 
 
 ## How to run volume_stark for Testnet v0.3
